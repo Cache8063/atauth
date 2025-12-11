@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { OAuthService } from '../services/oauth.js';
 import { DatabaseService } from '../services/database.js';
 import { createGatewayToken } from '../utils/hmac.js';
+import { internalError } from '../utils/errors.js';
 
 export function createAuthRoutes(
   db: DatabaseService,
@@ -63,11 +64,7 @@ export function createAuthRoutes(
         app_id,
       });
     } catch (error) {
-      console.error('Auth init error:', error);
-      res.status(500).json({
-        error: 'auth_init_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('auth_init_failed', error, 'Auth init'));
     }
   });
 
@@ -135,11 +132,18 @@ export function createAuthRoutes(
 
       if (savedState.redirect_uri) {
         const redirectUrl = new URL(savedState.redirect_uri);
-        redirectUrl.searchParams.set('token', token);
-        redirectUrl.searchParams.set('session_id', sessionId);
+        // Use URL fragment (hash) for sensitive data to prevent logging in:
+        // - Server access logs
+        // - Browser history
+        // - Referrer headers
+        // Fragments are only available client-side and never sent to servers
+        const fragmentParams = new URLSearchParams();
+        fragmentParams.set('token', token);
+        fragmentParams.set('session_id', sessionId);
         if (userId === null) {
-          redirectUrl.searchParams.set('needs_linking', 'true');
+          fragmentParams.set('needs_linking', 'true');
         }
+        redirectUrl.hash = fragmentParams.toString();
         return res.redirect(redirectUrl.toString());
       }
 
@@ -153,11 +157,7 @@ export function createAuthRoutes(
         expires_at: expiresAt.toISOString(),
       });
     } catch (error) {
-      console.error('Auth callback error:', error);
-      res.status(500).json({
-        error: 'auth_callback_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('auth_callback_failed', error, 'Auth callback'));
     }
   });
 
@@ -225,11 +225,7 @@ export function createAuthRoutes(
         user_id: parseInt(user_id, 10),
       });
     } catch (error) {
-      console.error('Link error:', error);
-      res.status(500).json({
-        error: 'link_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('link_failed', error, 'Link'));
     }
   });
 
@@ -283,11 +279,7 @@ export function createAuthRoutes(
         expires_in: app.token_ttl_seconds,
       });
     } catch (error) {
-      console.error('Refresh error:', error);
-      res.status(500).json({
-        error: 'refresh_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('refresh_failed', error, 'Refresh'));
     }
   });
 
@@ -310,11 +302,7 @@ export function createAuthRoutes(
 
       res.json({ success: true });
     } catch (error) {
-      console.error('Logout error:', error);
-      res.status(500).json({
-        error: 'logout_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('logout_failed', error, 'Logout'));
     }
   });
 

@@ -17,6 +17,7 @@ import { createAuthRoutes } from './routes/auth.js';
 import { createTokenRoutes } from './routes/token.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createSessionRoutes } from './routes/session.js';
+import { authRateLimit, apiRateLimit, adminRateLimit } from './middleware/rateLimit.js';
 
 // Configuration from environment
 const config = {
@@ -87,11 +88,11 @@ async function main(): Promise<void> {
     });
   });
 
-  // Routes
-  app.use('/auth', createAuthRoutes(db, oauth));
-  app.use('/token', createTokenRoutes(db));
-  app.use('/admin', createAdminRoutes(db, config.adminToken));
-  app.use('/session', createSessionRoutes(db));
+  // Routes with rate limiting
+  app.use('/auth', authRateLimit, createAuthRoutes(db, oauth));
+  app.use('/token', apiRateLimit, createTokenRoutes(db));
+  app.use('/admin', adminRateLimit, createAdminRoutes(db, config.adminToken));
+  app.use('/session', apiRateLimit, createSessionRoutes(db));
 
   // OAuth client metadata (for AT Protocol discovery)
   app.get('/client-metadata.json', (_req, res) => {

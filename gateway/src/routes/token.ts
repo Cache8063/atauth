@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { DatabaseService } from '../services/database.js';
 import { verifyGatewayToken } from '../utils/hmac.js';
+import { internalError } from '../utils/errors.js';
 
 export function createTokenRoutes(db: DatabaseService): Router {
   const router = Router();
@@ -68,12 +69,8 @@ export function createTokenRoutes(db: DatabaseService): Router {
         },
       });
     } catch (error) {
-      console.error('Token verify error:', error);
-      res.status(500).json({
-        valid: false,
-        error: 'verify_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      const errResponse = internalError('verify_failed', error, 'Token verify');
+      res.status(500).json({ valid: false, ...errResponse });
     }
   });
 
@@ -121,11 +118,7 @@ export function createTokenRoutes(db: DatabaseService): Router {
         remaining_seconds: remainingSeconds,
       });
     } catch (error) {
-      console.error('Token info error:', error);
-      res.status(500).json({
-        error: 'info_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('info_failed', error, 'Token info'));
     }
   });
 

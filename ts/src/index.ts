@@ -67,6 +67,12 @@ export {
   buildLogoutUrl,
 } from './oauth';
 
+// Validation utilities
+export {
+  parseOAuthState,
+  isValidAppId,
+} from './validation';
+
 /**
  * Library version
  */

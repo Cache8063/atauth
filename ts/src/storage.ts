@@ -118,23 +118,25 @@ export function getOAuthState(): Record<string, unknown> | null {
  *
  * @param length - Nonce length (default: 32)
  * @returns Random string
+ * @throws Error if no secure random source is available
  */
 export function generateNonce(length = 32): string {
   const chars =
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
 
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    const values = new Uint32Array(length);
-    crypto.getRandomValues(values);
-    for (let i = 0; i < length; i++) {
-      result += chars[values[i] % chars.length];
-    }
-  } else {
-    // Fallback for older environments
-    for (let i = 0; i < length; i++) {
-      result += chars[Math.floor(Math.random() * chars.length)];
-    }
+  // Require crypto.getRandomValues - no insecure fallback
+  if (typeof crypto === 'undefined' || !crypto.getRandomValues) {
+    throw new Error(
+      'Secure random number generator not available. ' +
+      'crypto.getRandomValues is required for CSRF protection.'
+    );
+  }
+
+  const values = new Uint32Array(length);
+  crypto.getRandomValues(values);
+  for (let i = 0; i < length; i++) {
+    result += chars[values[i] % chars.length];
   }
 
   return result;

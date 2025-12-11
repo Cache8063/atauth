@@ -4,9 +4,25 @@
  * Application registration and management endpoints
  */
 
+import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { DatabaseService } from '../services/database.js';
 import { generateHmacSecret } from '../utils/hmac.js';
+import { internalError } from '../utils/errors.js';
+
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ */
+function secureCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+
+  // Prevent length-based timing attacks by always comparing fixed-length hashes
+  const hashA = crypto.createHash('sha256').update(bufA).digest();
+  const hashB = crypto.createHash('sha256').update(bufB).digest();
+
+  return crypto.timingSafeEqual(hashA, hashB);
+}
 
 export function createAdminRoutes(db: DatabaseService, adminToken?: string): Router {
   const router = Router();
@@ -28,7 +44,7 @@ export function createAdminRoutes(db: DatabaseService, adminToken?: string): Rou
     }
 
     const token = authHeader.substring(7);
-    if (token !== adminToken) {
+    if (!secureCompare(token, adminToken)) {
       return res.status(403).json({
         error: 'invalid_token',
         message: 'Invalid admin token',
@@ -86,11 +102,7 @@ export function createAdminRoutes(db: DatabaseService, adminToken?: string): Rou
         message: 'Application registered. Store the hmac_secret securely!',
       });
     } catch (error) {
-      console.error('App registration error:', error);
-      res.status(500).json({
-        error: 'registration_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('registration_failed', error, 'App registration'));
     }
   });
 
@@ -115,11 +127,7 @@ export function createAdminRoutes(db: DatabaseService, adminToken?: string): Rou
         callback_url: app.callback_url,
       });
     } catch (error) {
-      console.error('Get app error:', error);
-      res.status(500).json({
-        error: 'get_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('get_failed', error, 'Get app'));
     }
   });
 
@@ -163,11 +171,7 @@ export function createAdminRoutes(db: DatabaseService, adminToken?: string): Rou
 
       res.json(response);
     } catch (error) {
-      console.error('Update app error:', error);
-      res.status(500).json({
-        error: 'update_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('update_failed', error, 'Update app'));
     }
   });
 
@@ -185,11 +189,7 @@ export function createAdminRoutes(db: DatabaseService, adminToken?: string): Rou
         sessions_deleted: sessionsDeleted,
       });
     } catch (error) {
-      console.error('Cleanup error:', error);
-      res.status(500).json({
-        error: 'cleanup_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('cleanup_failed', error, 'Cleanup'));
     }
   });
 

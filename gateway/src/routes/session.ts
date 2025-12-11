@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { DatabaseService } from '../services/database.js';
 import { createGatewayToken } from '../utils/hmac.js';
+import { internalError } from '../utils/errors.js';
 import type { SessionResolution, SessionConflict } from '../types/index.js';
 
 export function createSessionRoutes(db: DatabaseService): Router {
@@ -64,11 +65,7 @@ export function createSessionRoutes(db: DatabaseService): Router {
 
       res.json(response);
     } catch (error) {
-      console.error('Check conflict error:', error);
-      res.status(500).json({
-        error: 'check_conflict_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('check_conflict_failed', error, 'Check conflict'));
     }
   });
 
@@ -152,11 +149,7 @@ export function createSessionRoutes(db: DatabaseService): Router {
         }
       }
     } catch (error) {
-      console.error('Resolve conflict error:', error);
-      res.status(500).json({
-        error: 'resolve_conflict_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('resolve_conflict_failed', error, 'Resolve conflict'));
     }
   });
 
@@ -195,11 +188,7 @@ export function createSessionRoutes(db: DatabaseService): Router {
 
       res.json({ success: true, session_id, state });
     } catch (error) {
-      console.error('Update state error:', error);
-      res.status(500).json({
-        error: 'update_state_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('update_state_failed', error, 'Update state'));
     }
   });
 
@@ -230,11 +219,7 @@ export function createSessionRoutes(db: DatabaseService): Router {
 
       res.json({ success: true, session_id });
     } catch (error) {
-      console.error('Heartbeat error:', error);
-      res.status(500).json({
-        error: 'heartbeat_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('heartbeat_failed', error, 'Heartbeat'));
     }
   });
 
@@ -281,11 +266,7 @@ export function createSessionRoutes(db: DatabaseService): Router {
         })),
       });
     } catch (error) {
-      console.error('List active sessions error:', error);
-      res.status(500).json({
-        error: 'list_sessions_failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      res.status(500).json(internalError('list_sessions_failed', error, 'List active sessions'));
     }
   });
 
