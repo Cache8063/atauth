@@ -32,7 +32,7 @@ function base64UrlDecode(str: string): string {
 /**
  * Decode a token payload WITHOUT verification.
  *
- * ⚠️ WARNING: This does NOT verify the signature!
+ * WARNING: This does NOT verify the signature!
  * Use this only for client-side display purposes.
  * Always verify tokens server-side before trusting them.
  *

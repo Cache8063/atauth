@@ -151,7 +151,7 @@ Update app config (can rotate secret).
 ### Frontend (React)
 
 ```tsx
-import { redirectToAuth, handleCallback } from '@arcnode/atauth';
+import { redirectToAuth, handleCallback } from 'atauth';
 
 // Start login
 const startLogin = async (handle: string) => {

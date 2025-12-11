@@ -6,6 +6,9 @@ Cargo.lock
 ts/node_modules/
 ts/dist/
 ts/.turbo/
+gateway/node_modules/
+gateway/dist/
+gateway/.turbo/
 
 # IDE
 .idea/
@@ -21,3 +24,31 @@ Thumbs.db
 # Test artifacts
 *.db
 *.sqlite
+
+# Environment files (keep examples)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Build artifacts
+*.tsbuildinfo
+
+# Gateway data
+gateway/data/
