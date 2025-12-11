@@ -1,0 +1,65 @@
+# ATAuth - Self-Hosted AT Protocol Authentication
+#
+# Quick Start:
+#   1. Copy .env.example to .env and configure
+#   2. docker compose up -d
+#   3. Register your first app via the admin API
+#
+# For use with your own PDS (recommended):
+#   - Set OAUTH_CLIENT_ID to your gateway's public URL
+#   - Point your apps to authenticate via this gateway
+#   - Users sign in with their AT Protocol handle (@user.your-pds.com)
+
+services:
+  atauth:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    image: ghcr.io/cache8063/atauth-gateway:latest
+    container_name: atauth-gateway
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      # Gateway configuration
+      - PORT=3100
+      - HOST=0.0.0.0
+
+      # OAuth client identity (your gateway's public URL)
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-https://auth.example.com/client-metadata.json}
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-https://auth.example.com/auth/callback}
+
+      # Admin API token (generate with: openssl rand -hex 32)
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+
+      # CORS origins (comma-separated)
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+
+      # Database path
+      - DB_PATH=/app/data/gateway.db
+    volumes:
+      - atauth-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    labels:
+      # Traefik labels (optional - uncomment if using Traefik)
+      # - "traefik.enable=true"
+      # - "traefik.http.routers.atauth.rule=Host(`auth.example.com`)"
+      # - "traefik.http.routers.atauth.entrypoints=websecure"
+      # - "traefik.http.routers.atauth.tls.certresolver=letsencrypt"
+      # - "traefik.http.services.atauth.loadbalancer.server.port=3100"
+
+      # Homepage dashboard (optional)
+      - "homepage.group=Authentication"
+      - "homepage.name=ATAuth Gateway"
+      - "homepage.icon=lock"
+      - "homepage.href=https://auth.example.com"
+      - "homepage.description=AT Protocol SSO Gateway"
+
+volumes:
+  atauth-data:
+    driver: local
