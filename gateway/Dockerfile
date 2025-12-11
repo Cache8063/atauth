@@ -9,8 +9,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
-COPY package*.json ./
-RUN npm ci
+COPY package.json ./
+RUN npm install
 
 # Build TypeScript
 COPY tsconfig.json ./
@@ -27,8 +27,8 @@ RUN addgroup -g 1001 atauth && \
     adduser -u 1001 -G atauth -s /bin/sh -D atauth
 
 # Install production dependencies only
-COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY package.json ./
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy built files
 COPY --from=builder /app/dist ./dist
