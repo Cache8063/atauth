@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output (rebuilt in container)
+dist/
+
+# Development files
+*.log
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# Test files
+*.test.ts
+__tests__/
+coverage/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Data (mounted as volume)
+data/
