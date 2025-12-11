@@ -1,14 +1,39 @@
 # ATAuth - AT Protocol Authentication Library
 
-A generic, plug-and-play authentication library for AT Protocol (Bluesky) OAuth integration.
+A complete, plug-and-play authentication system for AT Protocol (Bluesky) OAuth integration.
+
+## Components
+
+| Component | Description |
+|-----------|-------------|
+| **[gateway/](gateway/)** | Node.js OAuth gateway server |
+| **[src/](src/)** | Rust token verification library |
+| **[ts/](ts/)** | TypeScript/React frontend utilities |
 
 ## Features
 
-- **Token Verification**: Secure HMAC-SHA256 token verification with constant-time comparison
-- **Session Management**: Trait-based session storage with SQLite and PostgreSQL backends
+- **OAuth Gateway**: Ready-to-deploy AT Protocol OAuth server
+- **Token Verification**: Secure HMAC-SHA256 with constant-time comparison
+- **Session Management**: Trait-based storage with SQLite and PostgreSQL backends
 - **Rate Limiting**: IP-based rate limiting with configurable thresholds
 - **Input Validation**: DID and handle format validation
 - **TypeScript Support**: Full TypeScript/React utilities for frontend integration
+
+## Architecture
+
+```text
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Your Frontend  │────▶│  ATAuth Gateway │────▶│   Bluesky PDS   │
+│  (React/Next)   │     │   (Node.js)     │     │ (OAuth Provider)│
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │
+        │ token                 │ HMAC secret
+        ▼                       ▼
+┌─────────────────┐     ┌─────────────────┐
+│  Your Backend   │────▶│  Token Verify   │
+│  (Rust/Node)    │     │  (atauth lib)   │
+└─────────────────┘     └─────────────────┘
+```
 
 ## Installation
 
