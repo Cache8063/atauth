@@ -5,6 +5,7 @@
 import type { AtAuthConfig, OAuthState, OAuthCallbackResult } from './types';
 import { decodeToken } from './token';
 import { storeToken, storeOAuthState, getOAuthState, generateNonce } from './storage';
+import { parseOAuthState } from './validation';
 
 /**
  * Default configuration
@@ -76,6 +77,8 @@ export function redirectToAuth(
  * Handle OAuth callback.
  *
  * Call this function on your callback page to process the authentication result.
+ * Tokens are passed via URL fragment (hash) for security - they won't appear
+ * in server logs, browser history, or referrer headers.
  *
  * @param config - Auth configuration
  * @returns Callback result with token or error
@@ -93,9 +96,15 @@ export function handleCallback(
   }
 
   const url = new URL(window.location.href);
-  const token = url.searchParams.get('token');
+
+  // Token is passed in URL fragment (hash) for security
+  // Fragments are never sent to servers, keeping tokens out of logs
+  const fragmentParams = new URLSearchParams(url.hash.slice(1));
+  const token = fragmentParams.get('token');
+
+  // Error may come via query param from gateway
   const error = url.searchParams.get('error');
-  const stateParam = url.searchParams.get('state');
+  const stateParam = url.searchParams.get('state') || fragmentParams.get('state');
 
   // Handle error from gateway
   if (error) {
@@ -113,26 +122,30 @@ export function handleCallback(
     };
   }
 
-  // Verify state/CSRF
+  // Verify state/CSRF with proper validation
   const storedState = getOAuthState();
   let returnTo: string | undefined;
 
   if (stateParam) {
-    try {
-      const receivedState = JSON.parse(stateParam) as OAuthState;
+    // Use secure parsing with validation
+    const receivedState = parseOAuthState(stateParam);
 
-      // Verify nonce matches
-      if (storedState?.nonce && receivedState.nonce !== storedState.nonce) {
-        return {
-          success: false,
-          error: 'Invalid OAuth state (CSRF protection)',
-        };
-      }
-
-      returnTo = receivedState.returnTo;
-    } catch {
-      // State parse error - might be okay if state wasn't used
+    if (!receivedState) {
+      return {
+        success: false,
+        error: 'Invalid OAuth state format',
+      };
     }
+
+    // Verify nonce matches
+    if (storedState?.nonce && receivedState.nonce !== storedState.nonce) {
+      return {
+        success: false,
+        error: 'Invalid OAuth state (CSRF protection)',
+      };
+    }
+
+    returnTo = receivedState.returnTo;
   }
 
   // Decode token
@@ -169,9 +182,11 @@ function cleanCallbackUrl(): void {
   if (typeof window === 'undefined') return;
 
   const url = new URL(window.location.href);
-  url.searchParams.delete('token');
   url.searchParams.delete('error');
   url.searchParams.delete('state');
+
+  // Clear the hash (contains sensitive token data)
+  url.hash = '';
 
   // Update URL without reload
   window.history.replaceState({}, document.title, url.pathname + url.search);
@@ -186,7 +201,10 @@ export function isOAuthCallback(): boolean {
   if (typeof window === 'undefined') return false;
 
   const url = new URL(window.location.href);
-  return url.searchParams.has('token') || url.searchParams.has('error');
+  const fragmentParams = new URLSearchParams(url.hash.slice(1));
+
+  // Token comes via fragment, error via query param
+  return fragmentParams.has('token') || url.searchParams.has('error');
 }
 
 /**

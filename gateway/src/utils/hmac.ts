@@ -59,11 +59,16 @@ export function verifyGatewayToken(
     .update(payloadBase64)
     .digest('base64url');
 
-  // Constant-time comparison
-  if (!crypto.timingSafeEqual(
-    Buffer.from(providedSignature),
-    Buffer.from(expectedSignature)
-  )) {
+  // Constant-time comparison with length check to prevent DoS
+  // timingSafeEqual throws if buffer lengths differ, so we check first
+  const providedBuf = Buffer.from(providedSignature);
+  const expectedBuf = Buffer.from(expectedSignature);
+
+  if (providedBuf.length !== expectedBuf.length) {
+    return null;
+  }
+
+  if (!crypto.timingSafeEqual(providedBuf, expectedBuf)) {
     return null;
   }
 
