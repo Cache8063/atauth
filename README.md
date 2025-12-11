@@ -84,7 +84,11 @@ services:
 ### Docker (Recommended)
 
 ```bash
+# From GitHub Container Registry
 docker pull ghcr.io/cache8063/atauth-gateway:latest
+
+# From Gitea Container Registry (self-hosted mirror)
+docker pull your-gitea-instance.example.com/arcnode.xyz/atauth-gateway:latest
 ```
 
 ### Rust Library
