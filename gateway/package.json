@@ -1,5 +1,5 @@
 {
-  "name": "@arcnode/atauth-gateway",
+  "name": "atauth-gateway",
   "version": "0.1.0",
   "description": "AT Protocol OAuth gateway for application authentication",
   "main": "dist/index.js",
@@ -19,11 +19,11 @@
     "oauth",
     "gateway"
   ],
-  "author": "Bryan Brooks <bryan@arcnode.xyz>",
+  "author": "ATAuth Contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://your-gitea-instance.example.com/Arcnode.xyz/atauth"
+    "url": "https://github.com/Cache8063/atauth"
   },
   "dependencies": {
     "@atproto/oauth-client-node": "^0.1.0",

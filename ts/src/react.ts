@@ -3,7 +3,7 @@
  *
  * @example
  * ```tsx
- * import { useAuthStore, AuthProvider } from '@arcnode/atauth/react';
+ * import { useAuthStore, AuthProvider } from 'atauth/react';
  *
  * function App() {
  *   const { isAuthenticated, user, login, logout } = useAuthStore();
