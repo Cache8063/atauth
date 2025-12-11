@@ -1,0 +1,65 @@
+[package]
+name = "atauth"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bryan Brooks <bryan@arcnode.xyz>"]
+description = "Generic AT Protocol (Bluesky) authentication library for Rust applications"
+license = "MIT"
+repository = "https://your-gitea-instance.example.com/Arcnode.xyz/atauth"
+keywords = ["atproto", "bluesky", "authentication", "oauth", "did"]
+categories = ["authentication", "web-programming"]
+readme = "README.md"
+
+[features]
+default = ["session-sqlite"]
+session-sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
+session-postgres = ["tokio-postgres", "deadpool-postgres"]
+rate-limit = []
+full = ["session-sqlite", "session-postgres", "rate-limit"]
+
+[dependencies]
+# Core cryptography
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2.5"
+base64 = "0.22"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "1"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Async runtime (optional)
+tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+
+# SQLite session store (optional)
+rusqlite = { version = "0.31", optional = true }
+r2d2 = { version = "0.8", optional = true }
+r2d2_sqlite = { version = "0.24", optional = true }
+
+# Postgres session store (optional)
+tokio-postgres = { version = "0.7", optional = true }
+deadpool-postgres = { version = "0.12", optional = true }
+
+# Logging
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[lib]
+name = "atauth"
+path = "src/lib.rs"
+
+[[example]]
+name = "basic_verification"
+path = "examples/basic_verification.rs"
+
+[[example]]
+name = "with_session_store"
+path = "examples/with_session_store.rs"
