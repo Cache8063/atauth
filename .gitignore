@@ -1,0 +1,23 @@
+# Rust
+/target/
+Cargo.lock
+
+# TypeScript
+ts/node_modules/
+ts/dist/
+ts/.turbo/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+*.db
+*.sqlite
