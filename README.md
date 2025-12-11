@@ -43,22 +43,22 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-atauth = { git = "https://your-gitea-instance.example.com/Arcnode.xyz/atauth" }
+atauth = { git = "https://github.com/Cache8063/atauth" }
 ```
 
 Or with specific features:
 
 ```toml
 [dependencies]
-atauth = { git = "https://your-gitea-instance.example.com/Arcnode.xyz/atauth", features = ["session-sqlite", "rate-limit"] }
+atauth = { git = "https://github.com/Cache8063/atauth", features = ["session-sqlite", "rate-limit"] }
 ```
 
 ### TypeScript/JavaScript
 
 ```bash
-npm install @arcnode/atauth
+npm install atauth
 # or
-pnpm add @arcnode/atauth
+pnpm add atauth
 ```
 
 ## Quick Start
@@ -143,7 +143,7 @@ limiter.record_success(&client_ip);
 ### TypeScript - React Integration
 
 ```tsx
-import { initAuthStore, useAuthStore } from '@arcnode/atauth/react';
+import { initAuthStore, useAuthStore } from 'atauth/react';
 
 // Initialize once at app startup
 initAuthStore({
@@ -180,7 +180,7 @@ import {
   handleCallback,
   isOAuthCallback,
   redirectToAuth
-} from '@arcnode/atauth';
+} from 'atauth';
 
 // Redirect to auth
 redirectToAuth({

@@ -2,10 +2,10 @@
 name = "atauth"
 version = "0.1.0"
 edition = "2021"
-authors = ["Bryan Brooks <bryan@arcnode.xyz>"]
+authors = ["ATAuth Contributors"]
 description = "Generic AT Protocol (Bluesky) authentication library for Rust applications"
 license = "MIT"
-repository = "https://your-gitea-instance.example.com/Arcnode.xyz/atauth"
+repository = "https://github.com/Cache8063/atauth"
 keywords = ["atproto", "bluesky", "authentication", "oauth", "did"]
 categories = ["authentication", "web-programming"]
 readme = "README.md"

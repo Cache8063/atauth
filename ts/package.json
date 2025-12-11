@@ -1,5 +1,5 @@
 {
-  "name": "@arcnode/atauth",
+  "name": "atauth",
   "version": "0.1.0",
   "description": "AT Protocol (Bluesky) authentication utilities for TypeScript/JavaScript",
   "main": "dist/index.js",
@@ -36,11 +36,11 @@
     "did",
     "react"
   ],
-  "author": "Bryan Brooks <bryan@arcnode.xyz>",
+  "author": "ATAuth Contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://your-gitea-instance.example.com/Arcnode.xyz/atauth"
+    "url": "https://github.com/Cache8063/atauth"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

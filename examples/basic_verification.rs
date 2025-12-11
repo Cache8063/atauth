@@ -26,7 +26,7 @@ fn main() {
     // Verify the token
     match verifier.verify(&token) {
         Ok(payload) => {
-            println!("✅ Token verified successfully!");
+            println!("[OK] Token verified successfully!");
             println!();
             println!("User Information:");
             println!("  DID:    {}", payload.did);
@@ -40,7 +40,7 @@ fn main() {
             println!("  Is expired: {}", payload.is_expired());
         }
         Err(e) => {
-            println!("❌ Token verification failed!");
+            println!("[FAIL] Token verification failed!");
             println!("  Error: {}", e);
             println!("  HTTP Status: {}", e.http_status_code());
         }
@@ -53,31 +53,31 @@ fn main() {
     // Test invalid signature
     let wrong_verifier = TokenVerifier::new(b"wrong-secret");
     match wrong_verifier.verify(&token) {
-        Ok(_) => println!("❌ Should have failed!"),
+        Ok(_) => println!("[FAIL] Should have failed!"),
         Err(AuthError::InvalidSignature) => {
-            println!("✅ Correctly rejected invalid signature");
+            println!("[OK] Correctly rejected invalid signature");
         }
-        Err(e) => println!("⚠️  Unexpected error: {}", e),
+        Err(e) => println!("[WARN] Unexpected error: {}", e),
     }
 
     // Test invalid format
     match verifier.verify("not-a-valid-token") {
-        Ok(_) => println!("❌ Should have failed!"),
+        Ok(_) => println!("[FAIL] Should have failed!"),
         Err(AuthError::InvalidFormat(_)) => {
-            println!("✅ Correctly rejected invalid format");
+            println!("[OK] Correctly rejected invalid format");
         }
-        Err(e) => println!("⚠️  Unexpected error: {}", e),
+        Err(e) => println!("[WARN] Unexpected error: {}", e),
     }
 
     // Test expired token
     let expired_payload = create_expired_payload();
     let expired_token = verifier.sign(&expired_payload).expect("Failed to sign");
     match verifier.verify(&expired_token) {
-        Ok(_) => println!("❌ Should have failed!"),
+        Ok(_) => println!("[FAIL] Should have failed!"),
         Err(AuthError::Expired) => {
-            println!("✅ Correctly rejected expired token");
+            println!("[OK] Correctly rejected expired token");
         }
-        Err(e) => println!("⚠️  Unexpected error: {}", e),
+        Err(e) => println!("[WARN] Unexpected error: {}", e),
     }
 }
 

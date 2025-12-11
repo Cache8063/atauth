@@ -33,16 +33,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match verifier.verify(&token) {
         Ok(payload) => {
-            println!("   ✅ Token verified for: {}", payload.handle);
+            println!("   [OK] Token verified for: {}", payload.handle);
 
             // Create session
             let session = sessions.create_session(&payload, token.clone())?;
-            println!("   ✅ Session created");
+            println!("   [OK] Session created");
             println!("      Token: {}...", &session.token[..20]);
             println!("      Expires in: {} seconds", session.remaining_seconds());
         }
         Err(e) => {
-            println!("   ❌ Verification failed: {}", e);
+            println!("   [FAIL] Verification failed: {}", e);
             return Ok(());
         }
     }
@@ -54,12 +54,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Simulate subsequent request with session token
     match sessions.validate(&token) {
         Ok(session) => {
-            println!("   ✅ Session valid for: {}", session.handle);
+            println!("   [OK] Session valid for: {}", session.handle);
             println!("      DID: {}", session.did);
             println!("      User ID: {:?}", session.user_id);
         }
         Err(e) => {
-            println!("   ❌ Session invalid: {}", e);
+            println!("   [FAIL] Session invalid: {}", e);
         }
     }
 
@@ -75,7 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create another session for same user
     let second_token = verifier.sign(&test_payload)?;
     sessions.create_session(&test_payload, second_token)?;
-    println!("   ✅ Second session created");
+    println!("   [OK] Second session created");
 
     let user_sessions = sessions.get_user_sessions(&test_payload.did)?;
     println!("   Now has {} sessions", user_sessions.len());
@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     println!("5. Logout (invalidate first session)");
     sessions.invalidate(&token)?;
-    println!("   ✅ First session invalidated");
+    println!("   [OK] First session invalidated");
 
     let user_sessions = sessions.get_user_sessions(&test_payload.did)?;
     println!("   Remaining sessions: {}", user_sessions.len());
@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     println!("6. Logout All Devices");
     let deleted = sessions.invalidate_all_for_did(&test_payload.did)?;
-    println!("   ✅ Deleted {} session(s)", deleted);
+    println!("   [OK] Deleted {} session(s)", deleted);
 
     println!();
     println!("7. Session Cleanup");

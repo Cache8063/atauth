@@ -1,11 +1,11 @@
 /**
- * @arcnode/atauth - AT Protocol Authentication Library
+ * atauth - AT Protocol Authentication Library
  *
  * A generic, plug-and-play authentication library for AT Protocol (Bluesky) OAuth integration.
  *
  * @example
  * ```typescript
- * import { decodeToken, handleCallback, redirectToAuth } from '@arcnode/atauth';
+ * import { decodeToken, handleCallback, redirectToAuth } from 'atauth';
  *
  * // Redirect to authentication
  * redirectToAuth({
