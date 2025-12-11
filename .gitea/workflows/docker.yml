@@ -14,8 +14,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: catthehacker/ubuntu:act-latest
 
     steps:
       - name: Checkout repository
