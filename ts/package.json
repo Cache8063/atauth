@@ -1,6 +1,6 @@
 {
   "name": "atauth",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "AT Protocol (Bluesky) authentication utilities for TypeScript/JavaScript",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
