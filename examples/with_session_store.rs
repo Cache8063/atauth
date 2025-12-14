@@ -5,8 +5,8 @@
 //!
 //! Run with: cargo run --example with_session_store --features session-sqlite
 
-use atauth::{TokenVerifier, TokenPayload};
-use atauth::session::{SqliteSessionStore, SessionManager};
+use atauth::session::{SessionManager, SqliteSessionStore};
+use atauth::{TokenPayload, TokenVerifier};
 use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,8 +19,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create session manager with auto-extend enabled
     let sessions = SessionManager::new(session_store)
-        .with_default_duration(86400)           // 24 hours
-        .with_auto_extend(true, 3600);          // Extend by 1 hour on each access
+        .with_default_duration(86400) // 24 hours
+        .with_auto_extend(true, 3600); // Extend by 1 hour on each access
 
     println!("=== Session Management Example ===\n");
 
