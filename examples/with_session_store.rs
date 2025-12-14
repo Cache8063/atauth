@@ -10,9 +10,9 @@ use atauth::{TokenPayload, TokenVerifier};
 use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup
-    let secret = b"your-super-secret-key-here";
-    let verifier = TokenVerifier::new(secret);
+    // Setup - secret must be at least 32 bytes (256 bits)
+    let secret = b"your-super-secret-key-at-least-32-bytes-long!";
+    let verifier = TokenVerifier::new(secret)?;
 
     // Create an in-memory session store (use file path for persistence)
     let session_store = SqliteSessionStore::in_memory()?;
