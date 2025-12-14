@@ -308,7 +308,7 @@ impl TokenVerifier {
 // Add hex dependency for from_hex
 mod hex {
     pub fn decode(s: &str) -> Result<Vec<u8>, String> {
-        if s.len() % 2 != 0 {
+        if !s.len().is_multiple_of(2) {
             return Err("Invalid hex string length".to_string());
         }
 

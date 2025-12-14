@@ -170,7 +170,7 @@ pub fn validate_handle(handle: &str) -> AuthResult<()> {
             && !part
                 .chars()
                 .next()
-                .map_or(false, |c| c.is_ascii_alphanumeric())
+                .is_some_and(|c| c.is_ascii_alphanumeric())
         {
             return Err(AuthError::InvalidHandle(
                 "Handle must start with letter or number".to_string(),
