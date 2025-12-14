@@ -9,10 +9,12 @@ use std::collections::HashMap;
 
 fn main() {
     // Your HMAC secret (shared with the auth gateway)
-    let secret = b"your-super-secret-key-here";
+    // Must be at least 32 bytes (256 bits) for security
+    let secret = b"your-super-secret-key-at-least-32-bytes-long!";
 
     // Create a verifier
     let verifier = TokenVerifier::new(secret)
+        .expect("Secret must be at least 32 bytes")
         .with_clock_skew(60) // Allow 60 seconds clock skew
         .with_format_validation(true); // Validate DID/handle formats
 
@@ -51,7 +53,8 @@ fn main() {
     println!();
 
     // Test invalid signature
-    let wrong_verifier = TokenVerifier::new(b"wrong-secret");
+    let wrong_verifier = TokenVerifier::new(b"wrong-secret-that-is-32-bytes-long!")
+        .expect("Secret must be at least 32 bytes");
     match wrong_verifier.verify(&token) {
         Ok(_) => println!("[FAIL] Should have failed!"),
         Err(AuthError::InvalidSignature) => {
