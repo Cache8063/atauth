@@ -125,7 +125,9 @@ curl -X POST https://auth.example.com/admin/apps \
 ```rust
 use atauth::TokenVerifier;
 
-let verifier = TokenVerifier::new(b"your-hmac-secret");
+// Secret must be at least 32 bytes (256 bits) for security
+let verifier = TokenVerifier::new(b"your-hmac-secret-at-least-32-bytes!")
+    .expect("Secret must be at least 32 bytes");
 
 match verifier.verify(token) {
     Ok(payload) => {

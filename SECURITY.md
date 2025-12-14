@@ -17,7 +17,9 @@ Instead, please send an email describing the vulnerability to the maintainers. I
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | Yes                |
+| 1.2.x   | Yes                |
+| 1.0.x   | Security fixes only |
+| < 1.0   | No                 |
 
 ## Security Best Practices
 
