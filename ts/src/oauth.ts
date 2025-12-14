@@ -5,14 +5,20 @@
 import type { AtAuthConfig, OAuthState, OAuthCallbackResult } from './types';
 import { decodeToken } from './token';
 import { storeToken, storeOAuthState, getOAuthState, generateNonce } from './storage';
-import { parseOAuthState } from './validation';
+import { parseOAuthState, validateGatewayUrl, validateCallbackUrl } from './validation';
 
 /**
  * Default configuration
+ *
+ * SECURITY: persistSession defaults to false (sessionStorage) for better security.
+ * Tokens stored in sessionStorage are cleared when the browser closes and are not
+ * shared across tabs, reducing XSS attack persistence.
+ *
+ * Set persistSession: true only for explicit "remember me" functionality.
  */
 const DEFAULT_CONFIG: Partial<AtAuthConfig> = {
   storageKey: 'atauth_token',
-  persistSession: true,
+  persistSession: false,
   refreshThreshold: 300,
 };
 
@@ -28,6 +34,12 @@ export function buildAuthUrl(
   state?: OAuthState
 ): string {
   const { gatewayUrl, appId, callbackUrl } = config;
+
+  // Validate URLs require HTTPS in production
+  validateGatewayUrl(gatewayUrl);
+  if (callbackUrl) {
+    validateCallbackUrl(callbackUrl);
+  }
 
   // Generate CSRF nonce
   const nonce = generateNonce();

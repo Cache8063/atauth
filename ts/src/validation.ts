@@ -5,6 +5,73 @@
 import type { OAuthState } from './types';
 
 /**
+ * Check if the current environment is production.
+ * Uses common environment indicators.
+ */
+function isProduction(): boolean {
+  if (typeof process !== 'undefined' && process.env) {
+    return process.env.NODE_ENV === 'production';
+  }
+  // Browser fallback: check if running on non-localhost
+  if (typeof window !== 'undefined') {
+    const hostname = window.location?.hostname;
+    return hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '::1';
+  }
+  return false;
+}
+
+/**
+ * Require HTTPS for gateway URLs in production.
+ *
+ * In production environments, all gateway URLs must use HTTPS to protect
+ * tokens in transit. This prevents man-in-the-middle attacks.
+ *
+ * @param url - The URL to validate
+ * @param context - Description for error message (e.g., "gatewayUrl")
+ * @throws Error if HTTPS is required but not used
+ */
+export function requireHttpsInProduction(url: string, context = 'URL'): void {
+  if (!isProduction()) {
+    return; // Allow HTTP in development
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') {
+      throw new Error(
+        `Security error: ${context} must use HTTPS in production. ` +
+        `Got "${parsed.protocol}" in "${url}"`
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith('Security error:')) {
+      throw e;
+    }
+    throw new Error(`Invalid ${context}: ${url}`);
+  }
+}
+
+/**
+ * Validate gateway URL for security requirements.
+ *
+ * @param gatewayUrl - The gateway URL to validate
+ * @throws Error if URL is invalid or insecure
+ */
+export function validateGatewayUrl(gatewayUrl: string): void {
+  requireHttpsInProduction(gatewayUrl, 'gatewayUrl');
+}
+
+/**
+ * Validate callback URL for security requirements.
+ *
+ * @param callbackUrl - The callback URL to validate
+ * @throws Error if URL is invalid or insecure
+ */
+export function validateCallbackUrl(callbackUrl: string): void {
+  requireHttpsInProduction(callbackUrl, 'callbackUrl');
+}
+
+/**
  * Maximum allowed size for OAuth state string to prevent DoS.
  */
 const MAX_STATE_SIZE = 4096;

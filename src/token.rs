@@ -11,7 +11,7 @@ use subtle::ConstantTimeEq;
 
 use crate::error::{AuthError, AuthResult};
 use crate::validation::{validate_did, validate_handle};
-use crate::MAX_TOKEN_LENGTH;
+use crate::{MAX_TOKEN_LENGTH, MIN_SECRET_LENGTH};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -97,9 +97,48 @@ pub struct TokenVerifier {
 impl TokenVerifier {
     /// Create a new token verifier with the given HMAC secret.
     ///
-    /// The secret should be a cryptographically random value shared
-    /// between your application and the auth gateway.
-    pub fn new(secret: &[u8]) -> Self {
+    /// The secret must be at least 32 bytes (256 bits) for security.
+    /// Use a cryptographically random value shared between your
+    /// application and the auth gateway.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the secret is shorter than 32 bytes.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use atauth::TokenVerifier;
+    ///
+    /// // Good: 32+ byte secret
+    /// let verifier = TokenVerifier::new(b"a]j2k#9xLmN!pQ4rS7tU0vW3yZ6bC8dE").unwrap();
+    ///
+    /// // Bad: Too short (will error)
+    /// assert!(TokenVerifier::new(b"short").is_err());
+    /// ```
+    pub fn new(secret: &[u8]) -> AuthResult<Self> {
+        if secret.len() < MIN_SECRET_LENGTH {
+            return Err(AuthError::InvalidFormat(format!(
+                "Secret key must be at least {} bytes ({} bits) for security. Got {} bytes.",
+                MIN_SECRET_LENGTH,
+                MIN_SECRET_LENGTH * 8,
+                secret.len()
+            )));
+        }
+        Ok(Self {
+            secret: secret.to_vec(),
+            validate_formats: true,
+            clock_skew_seconds: 30,
+        })
+    }
+
+    /// Create a token verifier without checking secret length.
+    ///
+    /// **Warning**: This bypasses the minimum key length check. Only use this
+    /// for testing or when you have validated the key length yourself.
+    ///
+    /// For production code, prefer `new()` which enforces security requirements.
+    pub fn new_unchecked(secret: &[u8]) -> Self {
         Self {
             secret: secret.to_vec(),
             validate_formats: true,
@@ -108,18 +147,22 @@ impl TokenVerifier {
     }
 
     /// Create a verifier from a hex-encoded secret string.
+    ///
+    /// The decoded secret must be at least 32 bytes.
     pub fn from_hex(hex_secret: &str) -> AuthResult<Self> {
         let secret = hex::decode(hex_secret)
             .map_err(|e| AuthError::InvalidFormat(format!("Invalid hex secret: {}", e)))?;
-        Ok(Self::new(&secret))
+        Self::new(&secret)
     }
 
     /// Create a verifier from a base64-encoded secret string.
+    ///
+    /// The decoded secret must be at least 32 bytes.
     pub fn from_base64(b64_secret: &str) -> AuthResult<Self> {
         let secret = URL_SAFE_NO_PAD
             .decode(b64_secret)
             .map_err(|e| AuthError::InvalidFormat(format!("Invalid base64 secret: {}", e)))?;
-        Ok(Self::new(&secret))
+        Self::new(&secret)
     }
 
     /// Set whether to validate DID and handle formats.
@@ -297,10 +340,13 @@ mod tests {
         }
     }
 
+    // Test secret that meets the 32-byte minimum requirement
+    const TEST_SECRET: &[u8; 32] = b"test-secret-key-32bytes-long!!!";
+    const TEST_SECRET_2: &[u8; 32] = b"another-secret-32-bytes-long!!!";
+
     #[test]
     fn test_sign_and_verify() {
-        let secret = b"test-secret-key-12345";
-        let verifier = TokenVerifier::new(secret);
+        let verifier = TokenVerifier::new(TEST_SECRET).unwrap();
         let payload = create_test_payload();
 
         let token = verifier.sign(&payload).unwrap();
@@ -313,8 +359,8 @@ mod tests {
 
     #[test]
     fn test_invalid_signature() {
-        let verifier = TokenVerifier::new(b"secret1");
-        let other_verifier = TokenVerifier::new(b"secret2");
+        let verifier = TokenVerifier::new(TEST_SECRET).unwrap();
+        let other_verifier = TokenVerifier::new(TEST_SECRET_2).unwrap();
 
         let payload = create_test_payload();
         let token = verifier.sign(&payload).unwrap();
@@ -327,8 +373,19 @@ mod tests {
     }
 
     #[test]
+    fn test_secret_too_short() {
+        // Secrets shorter than 32 bytes should be rejected
+        assert!(TokenVerifier::new(b"short").is_err());
+        assert!(TokenVerifier::new(b"").is_err());
+        assert!(TokenVerifier::new(b"31-bytes-secret-not-long-enuff").is_err());
+
+        // Exactly 32 bytes should work
+        assert!(TokenVerifier::new(b"exactly-32-bytes-secret-here!!!").is_ok());
+    }
+
+    #[test]
     fn test_expired_token() {
-        let verifier = TokenVerifier::new(b"secret");
+        let verifier = TokenVerifier::new(TEST_SECRET).unwrap();
         let now = chrono::Utc::now().timestamp();
 
         let payload = TokenPayload {
@@ -348,7 +405,7 @@ mod tests {
 
     #[test]
     fn test_clock_skew_tolerance() {
-        let verifier = TokenVerifier::new(b"secret").with_clock_skew(60);
+        let verifier = TokenVerifier::new(TEST_SECRET).unwrap().with_clock_skew(60);
         let now = chrono::Utc::now().timestamp();
 
         // Token expired 30 seconds ago (within 60s tolerance)
@@ -369,7 +426,7 @@ mod tests {
 
     #[test]
     fn test_invalid_format() {
-        let verifier = TokenVerifier::new(b"secret");
+        let verifier = TokenVerifier::new(TEST_SECRET).unwrap();
 
         // No separator
         assert!(matches!(
@@ -392,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_token_too_long() {
-        let verifier = TokenVerifier::new(b"secret");
+        let verifier = TokenVerifier::new(TEST_SECRET).unwrap();
         let long_token = "a".repeat(MAX_TOKEN_LENGTH + 1);
 
         assert!(matches!(

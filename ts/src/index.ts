@@ -71,6 +71,9 @@ export {
 export {
   parseOAuthState,
   isValidAppId,
+  requireHttpsInProduction,
+  validateGatewayUrl,
+  validateCallbackUrl,
 } from './validation';
 
 /**
