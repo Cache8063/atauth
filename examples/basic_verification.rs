@@ -4,7 +4,7 @@
 //!
 //! Run with: cargo run --example basic_verification
 
-use atauth::{TokenVerifier, TokenPayload, AuthError};
+use atauth::{AuthError, TokenPayload, TokenVerifier};
 use std::collections::HashMap;
 
 fn main() {
@@ -13,7 +13,7 @@ fn main() {
 
     // Create a verifier
     let verifier = TokenVerifier::new(secret)
-        .with_clock_skew(60)      // Allow 60 seconds clock skew
+        .with_clock_skew(60) // Allow 60 seconds clock skew
         .with_format_validation(true); // Validate DID/handle formats
 
     // Create a test token (in real use, this comes from the client)
@@ -102,8 +102,8 @@ fn create_expired_payload() -> TokenPayload {
         handle: "expired.bsky.social".to_string(),
         user_id: None,
         app_id: None,
-        iat: now - 7200,  // 2 hours ago
-        exp: now - 3600,  // 1 hour ago (expired)
+        iat: now - 7200, // 2 hours ago
+        exp: now - 3600, // 1 hour ago (expired)
         nonce: "expired-nonce".to_string(),
         extra: HashMap::new(),
     }
