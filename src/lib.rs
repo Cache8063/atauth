@@ -77,6 +77,9 @@ pub const MAX_DID_LENGTH: usize = 512;
 /// Maximum handle length
 pub const MAX_HANDLE_LENGTH: usize = 256;
 
+/// Minimum secret key length (32 bytes = 256 bits for HMAC-SHA256 security)
+pub const MIN_SECRET_LENGTH: usize = 32;
+
 /// Prelude module for common imports
 pub mod prelude {
     pub use crate::error::{AuthError, AuthResult};

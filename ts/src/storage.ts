@@ -1,11 +1,21 @@
 /**
  * Token storage utilities
+ *
+ * SECURITY: By default, tokens are stored in sessionStorage which:
+ * - Clears when the browser/tab is closed
+ * - Is not shared across tabs
+ * - Provides better protection against XSS persistence
+ *
+ * Set persist=true only for explicit "remember me" functionality.
  */
 
 const DEFAULT_STORAGE_KEY = 'atauth_token';
 
 /**
  * Get the appropriate storage mechanism.
+ *
+ * @param persist - Use localStorage (true) for persistent sessions,
+ *                  sessionStorage (false, default) for session-only storage
  */
 function getStorage(persist: boolean): Storage | null {
   if (typeof window === 'undefined') {
@@ -19,12 +29,12 @@ function getStorage(persist: boolean): Storage | null {
  *
  * @param token - Token to store
  * @param key - Storage key (default: "atauth_token")
- * @param persist - Use localStorage (true) or sessionStorage (false)
+ * @param persist - Use localStorage (true) or sessionStorage (false, default)
  */
 export function storeToken(
   token: string,
   key = DEFAULT_STORAGE_KEY,
-  persist = true
+  persist = false
 ): void {
   const storage = getStorage(persist);
   if (storage) {
@@ -36,12 +46,12 @@ export function storeToken(
  * Retrieve stored authentication token.
  *
  * @param key - Storage key (default: "atauth_token")
- * @param persist - Check localStorage (true) or sessionStorage (false)
+ * @param persist - Check localStorage (true) or sessionStorage (false, default)
  * @returns Stored token or null
  */
 export function getStoredToken(
   key = DEFAULT_STORAGE_KEY,
-  persist = true
+  persist = false
 ): string | null {
   const storage = getStorage(persist);
   if (storage) {
@@ -54,11 +64,11 @@ export function getStoredToken(
  * Remove stored authentication token.
  *
  * @param key - Storage key (default: "atauth_token")
- * @param persist - Remove from localStorage (true) or sessionStorage (false)
+ * @param persist - Remove from localStorage (true) or sessionStorage (false, default)
  */
 export function removeStoredToken(
   key = DEFAULT_STORAGE_KEY,
-  persist = true
+  persist = false
 ): void {
   const storage = getStorage(persist);
   if (storage) {
@@ -70,12 +80,12 @@ export function removeStoredToken(
  * Check if a token is stored.
  *
  * @param key - Storage key (default: "atauth_token")
- * @param persist - Check localStorage (true) or sessionStorage (false)
+ * @param persist - Check localStorage (true) or sessionStorage (false, default)
  * @returns True if token exists
  */
 export function hasStoredToken(
   key = DEFAULT_STORAGE_KEY,
-  persist = true
+  persist = false
 ): boolean {
   return getStoredToken(key, persist) !== null;
 }

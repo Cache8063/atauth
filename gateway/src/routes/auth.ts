@@ -11,6 +11,54 @@ import { DatabaseService } from '../services/database.js';
 import { createGatewayToken } from '../utils/hmac.js';
 import { internalError } from '../utils/errors.js';
 
+/**
+ * Validate a redirect URI against an app's allowed callback URL.
+ *
+ * SECURITY: Prevents open redirect attacks by ensuring the redirect_uri
+ * matches the app's registered callback_url origin (or starts with it).
+ *
+ * @param redirectUri - The redirect URI from the request
+ * @param allowedUrl - The app's registered callback_url
+ * @returns true if valid, false otherwise
+ */
+function isValidRedirectUri(redirectUri: string, allowedUrl: string | undefined): boolean {
+  if (!redirectUri) return false;
+
+  try {
+    const redirect = new URL(redirectUri);
+    const protocol = redirect.protocol;
+
+    // Only allow HTTPS in production (or HTTP for localhost dev)
+    const isLocalhost = redirect.hostname === 'localhost' || redirect.hostname === '127.0.0.1';
+    if (protocol !== 'https:' && !(protocol === 'http:' && isLocalhost)) {
+      return false;
+    }
+
+    // If app has no registered callback, reject external redirects
+    if (!allowedUrl) {
+      return false;
+    }
+
+    const allowed = new URL(allowedUrl);
+
+    // Must match origin (scheme + host + port)
+    if (redirect.origin !== allowed.origin) {
+      return false;
+    }
+
+    // Redirect path must start with allowed path (for path restrictions)
+    // This allows callback_url="https://app.com/auth" to accept
+    // redirects to "https://app.com/auth/callback" but not "https://app.com/admin"
+    if (allowed.pathname !== '/' && !redirect.pathname.startsWith(allowed.pathname)) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createAuthRoutes(
   db: DatabaseService,
   oauth: OAuthService
@@ -52,10 +100,25 @@ export function createAuthRoutes(
         });
       }
 
+      // Validate redirect_uri if provided
+      let validatedRedirectUri: string | undefined;
+      if (typeof redirect_uri === 'string') {
+        if (!isValidRedirectUri(redirect_uri, app.callback_url)) {
+          return res.status(400).json({
+            error: 'invalid_redirect_uri',
+            message: 'redirect_uri does not match the registered callback URL for this application',
+          });
+        }
+        validatedRedirectUri = redirect_uri;
+      } else if (app.callback_url) {
+        // Use the registered callback URL as default
+        validatedRedirectUri = app.callback_url;
+      }
+
       const { url, state } = await oauth.generateAuthUrl(
         app_id,
         handle,
-        typeof redirect_uri === 'string' ? redirect_uri : undefined
+        validatedRedirectUri
       );
 
       res.json({
@@ -131,6 +194,15 @@ export function createAuthRoutes(
       });
 
       if (savedState.redirect_uri) {
+        // Defense in depth: re-validate redirect URI before redirecting
+        if (!isValidRedirectUri(savedState.redirect_uri, app.callback_url)) {
+          console.error(`[SECURITY] Invalid redirect_uri in saved state: ${savedState.redirect_uri}`);
+          return res.status(400).json({
+            error: 'invalid_redirect_uri',
+            message: 'Redirect URI validation failed',
+          });
+        }
+
         const redirectUrl = new URL(savedState.redirect_uri);
         // Use URL fragment (hash) for sensitive data to prevent logging in:
         // - Server access logs

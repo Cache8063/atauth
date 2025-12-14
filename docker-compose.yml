@@ -19,7 +19,9 @@ services:
     container_name: atauth-gateway
     restart: unless-stopped
     ports:
-      - "3100:3100"
+      # Bind to localhost only by default for security
+      # Use a reverse proxy (Traefik/Caddy) for external access
+      - "127.0.0.1:3100:3100"
     environment:
       # Gateway configuration
       - PORT=3100
