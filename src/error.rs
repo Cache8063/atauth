@@ -59,7 +59,9 @@ impl AuthError {
     pub fn is_invalid_token(&self) -> bool {
         matches!(
             self,
-            AuthError::InvalidFormat(_) | AuthError::InvalidSignature | AuthError::InvalidPayload(_)
+            AuthError::InvalidFormat(_)
+                | AuthError::InvalidSignature
+                | AuthError::InvalidPayload(_)
         )
     }
 

@@ -57,7 +57,9 @@ pub fn validate_did(did: &str) -> AuthResult<()> {
     // Validate method (second part)
     let method = parts[1];
     if method.is_empty() {
-        return Err(AuthError::InvalidDid("DID method cannot be empty".to_string()));
+        return Err(AuthError::InvalidDid(
+            "DID method cannot be empty".to_string(),
+        ));
     }
 
     // Method should only contain lowercase letters
@@ -164,7 +166,12 @@ pub fn validate_handle(handle: &str) -> AuthResult<()> {
         }
 
         // First part (username) should start with letter or number
-        if i == 0 && !part.chars().next().map_or(false, |c| c.is_ascii_alphanumeric()) {
+        if i == 0
+            && !part
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_ascii_alphanumeric())
+        {
             return Err(AuthError::InvalidHandle(
                 "Handle must start with letter or number".to_string(),
             ));

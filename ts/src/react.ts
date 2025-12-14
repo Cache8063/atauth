@@ -41,7 +41,7 @@ export function createAuthStore(config: AtAuthConfig) {
 
   return create<AuthStore>()(
     persist(
-      (set, get) => ({
+      (set, _get) => ({
         // Initial state
         isAuthenticated: false,
         isLoading: true,
@@ -185,8 +185,8 @@ export function useAuthStore(): AuthStore & {
       state.clearAuth();
       // Optionally redirect to gateway logout
       if (defaultConfig?.gatewayUrl) {
-        const logoutUrl = buildLogoutUrl(defaultConfig, window.location.origin);
-        // Don't auto-redirect, let the app decide
+        // Build logout URL - app can redirect if needed
+        void buildLogoutUrl(defaultConfig, window.location.origin);
       }
     },
   };
