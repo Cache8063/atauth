@@ -11,11 +11,12 @@
 //!
 //! ## Quick Start
 //!
-//! ```rust
+//! ```rust,no_run
 //! use atauth::{TokenVerifier, TokenPayload};
 //!
-//! // Create a verifier with your HMAC secret
-//! let verifier = TokenVerifier::new(b"your-secret-key");
+//! // Create a verifier with your HMAC secret (must be at least 32 bytes)
+//! let verifier = TokenVerifier::new(b"your-secret-key-at-least-32-bytes!!")
+//!     .expect("Secret must be at least 32 bytes");
 //!
 //! // Verify a token from the auth gateway
 //! match verifier.verify("token-from-gateway") {

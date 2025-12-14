@@ -75,10 +75,11 @@ impl TokenPayload {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
 /// use atauth::TokenVerifier;
 ///
-/// let verifier = TokenVerifier::new(b"your-shared-secret");
+/// let verifier = TokenVerifier::new(b"your-secret-key-at-least-32-bytes!!")
+///     .expect("Secret must be at least 32 bytes");
 ///
 /// match verifier.verify("payload.signature") {
 ///     Ok(payload) => println!("Valid token for: {}", payload.handle),
