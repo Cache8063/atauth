@@ -341,8 +341,8 @@ mod tests {
     }
 
     // Test secret that meets the 32-byte minimum requirement
-    const TEST_SECRET: &[u8; 32] = b"test-secret-key-32bytes-long!!!";
-    const TEST_SECRET_2: &[u8; 32] = b"another-secret-32-bytes-long!!!";
+    const TEST_SECRET: &[u8; 32] = b"test-secret-key-32bytes-long!!!!";
+    const TEST_SECRET_2: &[u8; 32] = b"another-secret-32-bytes-long!!!!";
 
     #[test]
     fn test_sign_and_verify() {

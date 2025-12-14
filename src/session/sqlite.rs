@@ -248,8 +248,6 @@ impl SessionStore for SqliteSessionStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::token::TokenPayload;
-    use std::collections::HashMap;
 
     fn create_test_session() -> Session {
         let now = chrono::Utc::now().timestamp();
