@@ -380,7 +380,7 @@ mod tests {
         assert!(TokenVerifier::new(b"31-bytes-secret-not-long-enuff").is_err());
 
         // Exactly 32 bytes should work
-        assert!(TokenVerifier::new(b"exactly-32-bytes-secret-here!!!").is_ok());
+        assert!(TokenVerifier::new(b"exactly-32-bytes-secret-here!!!!").is_ok());
     }
 
     #[test]
