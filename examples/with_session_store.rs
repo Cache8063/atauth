@@ -67,7 +67,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("3. Get All User Sessions");
 
     let user_sessions = sessions.get_user_sessions(&test_payload.did)?;
-    println!("   Found {} session(s) for {}", user_sessions.len(), test_payload.did);
+    println!(
+        "   Found {} session(s) for {}",
+        user_sessions.len(),
+        test_payload.did
+    );
 
     println!();
     println!("4. Create Another Session (same user, different device)");

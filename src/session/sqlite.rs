@@ -77,7 +77,9 @@ impl SqliteSessionStore {
 
     /// Get a connection from the pool.
     fn conn(&self) -> AuthResult<r2d2::PooledConnection<SqliteConnectionManager>> {
-        self.pool.get().map_err(|e| AuthError::Database(e.to_string()))
+        self.pool
+            .get()
+            .map_err(|e| AuthError::Database(e.to_string()))
     }
 }
 
@@ -121,8 +123,7 @@ impl SessionStore for SqliteSessionStore {
 
         let result = stmt.query_row(params![token], |row| {
             let metadata_str: Option<String> = row.get(6)?;
-            let metadata = metadata_str
-                .and_then(|s| serde_json::from_str(&s).ok());
+            let metadata = metadata_str.and_then(|s| serde_json::from_str(&s).ok());
 
             Ok(Session {
                 token: row.get(0)?,
