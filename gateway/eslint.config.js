@@ -11,6 +11,7 @@ export default tseslint.config(
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
+        projectService: true,  // Use TypeScript's project service for better performance
       },
     },
     rules: {

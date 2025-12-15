@@ -1,13 +1,14 @@
 /**
  * Token Routes
  *
- * Token verification and management endpoints
+ * Token verification and management endpoints.
+ * Express 5 automatically forwards async errors to the error handler.
  */
 
 import { Router, Request, Response } from 'express';
 import { DatabaseService } from '../services/database.js';
 import { verifyGatewayToken } from '../utils/hmac.js';
-import { internalError } from '../utils/errors.js';
+import { httpError } from '../utils/errors.js';
 
 export function createTokenRoutes(db: DatabaseService): Router {
   const router = Router();
@@ -21,57 +22,52 @@ export function createTokenRoutes(db: DatabaseService): Router {
    * - app_id: The application identifier
    */
   router.post('/verify', async (req: Request, res: Response) => {
-    try {
-      const { token, app_id } = req.body;
+    const { token, app_id } = req.body;
 
-      if (!token || !app_id) {
-        return res.status(400).json({
-          valid: false,
-          error: 'missing_params',
-          message: 'token and app_id are required',
-        });
-      }
-
-      const app = db.getApp(app_id);
-      if (!app) {
-        return res.status(404).json({
-          valid: false,
-          error: 'app_not_found',
-          message: `Application '${app_id}' is not registered`,
-        });
-      }
-
-      const payload = verifyGatewayToken(token, app.hmac_secret);
-      if (!payload) {
-        return res.status(401).json({
-          valid: false,
-          error: 'invalid_token',
-          message: 'Token is invalid or expired',
-        });
-      }
-
-      if (payload.app_id !== app_id) {
-        return res.status(401).json({
-          valid: false,
-          error: 'app_mismatch',
-          message: 'Token was issued for a different application',
-        });
-      }
-
-      res.json({
-        valid: true,
-        payload: {
-          did: payload.did,
-          handle: payload.handle,
-          user_id: payload.user_id,
-          app_id: payload.app_id,
-          exp: payload.exp,
-        },
+    if (!token || !app_id) {
+      return res.status(400).json({
+        valid: false,
+        error: 'missing_params',
+        message: 'token and app_id are required',
       });
-    } catch (error) {
-      const errResponse = internalError('verify_failed', error, 'Token verify');
-      res.status(500).json({ valid: false, ...errResponse });
     }
+
+    const app = db.getApp(app_id);
+    if (!app) {
+      return res.status(404).json({
+        valid: false,
+        error: 'app_not_found',
+        message: `Application '${app_id}' is not registered`,
+      });
+    }
+
+    const payload = verifyGatewayToken(token, app.hmac_secret);
+    if (!payload) {
+      return res.status(401).json({
+        valid: false,
+        error: 'invalid_token',
+        message: 'Token is invalid or expired',
+      });
+    }
+
+    if (payload.app_id !== app_id) {
+      return res.status(401).json({
+        valid: false,
+        error: 'app_mismatch',
+        message: 'Token was issued for a different application',
+      });
+    }
+
+    res.json({
+      valid: true,
+      payload: {
+        did: payload.did,
+        handle: payload.handle,
+        user_id: payload.user_id,
+        app_id: payload.app_id,
+        exp: payload.exp,
+      },
+    });
   });
 
   /**
@@ -79,47 +75,34 @@ export function createTokenRoutes(db: DatabaseService): Router {
    * Get information about a token
    */
   router.get('/info', async (req: Request, res: Response) => {
-    try {
-      const { token, app_id } = req.query;
+    const { token, app_id } = req.query;
 
-      if (!token || typeof token !== 'string' || !app_id || typeof app_id !== 'string') {
-        return res.status(400).json({
-          error: 'missing_params',
-          message: 'token and app_id query parameters are required',
-        });
-      }
-
-      const app = db.getApp(app_id);
-      if (!app) {
-        return res.status(404).json({
-          error: 'app_not_found',
-          message: `Application '${app_id}' is not registered`,
-        });
-      }
-
-      const payload = verifyGatewayToken(token, app.hmac_secret);
-      if (!payload) {
-        return res.status(401).json({
-          error: 'invalid_token',
-          message: 'Token is invalid or expired',
-        });
-      }
-
-      const now = Math.floor(Date.now() / 1000);
-      const remainingSeconds = payload.exp - now;
-
-      res.json({
-        did: payload.did,
-        handle: payload.handle,
-        user_id: payload.user_id,
-        app_id: payload.app_id,
-        issued_at: new Date(payload.iat * 1000).toISOString(),
-        expires_at: new Date(payload.exp * 1000).toISOString(),
-        remaining_seconds: remainingSeconds,
-      });
-    } catch (error) {
-      res.status(500).json(internalError('info_failed', error, 'Token info'));
+    if (!token || typeof token !== 'string' || !app_id || typeof app_id !== 'string') {
+      throw httpError.badRequest('missing_params', 'token and app_id query parameters are required');
     }
+
+    const app = db.getApp(app_id);
+    if (!app) {
+      throw httpError.notFound('app_not_found', `Application '${app_id}' is not registered`);
+    }
+
+    const payload = verifyGatewayToken(token, app.hmac_secret);
+    if (!payload) {
+      throw httpError.unauthorized('invalid_token', 'Token is invalid or expired');
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const remainingSeconds = payload.exp - now;
+
+    res.json({
+      did: payload.did,
+      handle: payload.handle,
+      user_id: payload.user_id,
+      app_id: payload.app_id,
+      issued_at: new Date(payload.iat * 1000).toISOString(),
+      expires_at: new Date(payload.exp * 1000).toISOString(),
+      remaining_seconds: remainingSeconds,
+    });
   });
 
   return router;

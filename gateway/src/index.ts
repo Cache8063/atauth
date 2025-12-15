@@ -18,6 +18,7 @@ import { createTokenRoutes } from './routes/token.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createSessionRoutes } from './routes/session.js';
 import { authRateLimit, apiRateLimit, adminRateLimit } from './middleware/rateLimit.js';
+import { HttpError } from './utils/errors.js';
 
 // Configuration from environment
 const config = {
@@ -110,8 +111,17 @@ async function main(): Promise<void> {
     });
   });
 
-  // Error handler
+  // Error handler - Express 5 automatically forwards async errors here
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    // Handle known HTTP errors (thrown by route handlers)
+    if (err instanceof HttpError) {
+      return res.status(err.statusCode).json({
+        error: err.code,
+        message: err.message,
+      });
+    }
+
+    // Log unexpected errors
     console.error('Unhandled error:', err);
     res.status(500).json({
       error: 'internal_error',
