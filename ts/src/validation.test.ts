@@ -138,7 +138,7 @@ describe('isValidHandle', () => {
   });
 
   it('rejects too short handles', () => {
-    expect(isValidHandle('a.b')).toBe(false);
+    expect(isValidHandle('ab')).toBe(false);  // 2 chars, below minimum of 3
   });
 
   it('rejects handles with consecutive dots', () => {
