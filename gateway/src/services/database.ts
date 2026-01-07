@@ -190,7 +190,7 @@ export class DatabaseService {
   }
 
   cleanupExpiredSessions(): number {
-    const stmt = this.db.prepare('DELETE FROM sessions WHERE expires_at < datetime("now")');
+    const stmt = this.db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')");
     const result = stmt.run();
     return result.changes;
   }
@@ -252,6 +252,40 @@ export class DatabaseService {
     `);
     const result = stmt.run(did, appId, keepSessionId);
     return result.changes;
+  }
+
+  // Admin methods for listing and managing apps
+  getAllApps(): Omit<AppConfig, 'hmac_secret'>[] {
+    const stmt = this.db.prepare(
+      'SELECT id, name, token_ttl_seconds, callback_url, created_at FROM apps ORDER BY created_at DESC'
+    );
+    return stmt.all() as Omit<AppConfig, 'hmac_secret'>[];
+  }
+
+  deleteApp(appId: string): void {
+    // Delete in order respecting foreign keys
+    this.db.prepare('DELETE FROM oauth_states WHERE app_id = ?').run(appId);
+    this.db.prepare('DELETE FROM sessions WHERE app_id = ?').run(appId);
+    this.db.prepare('DELETE FROM user_mappings WHERE app_id = ?').run(appId);
+    this.db.prepare('DELETE FROM apps WHERE id = ?').run(appId);
+  }
+
+  getStats(): { appCount: number; activeSessions: number; pendingOAuthStates: number } {
+    const appCount = (
+      this.db.prepare('SELECT COUNT(*) as count FROM apps').get() as { count: number }
+    ).count;
+
+    const activeSessions = (
+      this.db
+        .prepare("SELECT COUNT(*) as count FROM sessions WHERE expires_at > datetime('now')")
+        .get() as { count: number }
+    ).count;
+
+    const pendingOAuthStates = (
+      this.db.prepare('SELECT COUNT(*) as count FROM oauth_states').get() as { count: number }
+    ).count;
+
+    return { appCount, activeSessions, pendingOAuthStates };
   }
 
   close(): void {
