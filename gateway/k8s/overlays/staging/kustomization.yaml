@@ -5,6 +5,7 @@ namespace: atauth-staging
 
 resources:
   - ../../base
+  - tailscale-ingress.yaml
 
 nameSuffix: -staging
 
