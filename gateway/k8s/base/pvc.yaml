@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: atauth-gateway-data
+  namespace: atauth
+  labels:
+    app.kubernetes.io/name: atauth-gateway
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # Uncomment and set your storage class
+  # storageClassName: local-path

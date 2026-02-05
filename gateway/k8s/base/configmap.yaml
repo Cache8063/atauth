@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atauth-gateway-config
+  namespace: atauth
+  labels:
+    app.kubernetes.io/name: atauth-gateway
+    app.kubernetes.io/component: config
+data:
+  # Server configuration
+  PORT: "3100"
+  HOST: "0.0.0.0"
+  NODE_ENV: "production"
+
+  # OAuth client configuration (for AT Protocol)
+  # Update these to match your deployment
+  OAUTH_CLIENT_ID: "https://auth.example.com/client-metadata.json"
+  OAUTH_REDIRECT_URI: "https://auth.example.com/auth/callback"
+
+  # CORS origins (comma-separated)
+  CORS_ORIGINS: "https://example.com,https://app.example.com"
+
+  # OIDC configuration
+  OIDC_ENABLED: "true"
+  OIDC_ISSUER: "https://auth.example.com"
+  OIDC_KEY_ALGORITHM: "ES256"
+
+  # Passkey/WebAuthn configuration
+  PASSKEY_ENABLED: "true"
+  WEBAUTHN_RP_NAME: "ATAuth"
+  WEBAUTHN_RP_ID: "auth.example.com"
+  WEBAUTHN_ORIGIN: "https://auth.example.com"
+
+  # MFA configuration
+  MFA_ENABLED: "true"
+  MFA_TOTP_ISSUER: "ATAuth"
+  MFA_BACKUP_CODES_COUNT: "10"
+
+  # Email configuration (disabled by default)
+  EMAIL_ENABLED: "false"
+  EMAIL_PROVIDER: "smtp"
+  EMAIL_FROM: "ATAuth <noreply@example.com>"
+  EMAIL_CODE_EXPIRY: "900"

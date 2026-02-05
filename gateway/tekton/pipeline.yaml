@@ -1,0 +1,104 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: atauth-gateway-build
+  namespace: tekton-pipelines
+spec:
+  description: Build and deploy ATAuth Gateway
+  params:
+    - name: git-url
+      type: string
+      description: Git repository URL
+      default: "https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth.git"
+    - name: git-revision
+      type: string
+      description: Git revision to build
+      default: "main"
+    - name: image-registry
+      type: string
+      description: Container registry
+      default: "gitea.cloudforest-basilisk.ts.net"
+    - name: image-name
+      type: string
+      description: Image name
+      default: "arcnode.xyz/atauth-gateway"
+    - name: image-tag
+      type: string
+      description: Image tag
+      default: "latest"
+    - name: deploy-namespace
+      type: string
+      description: Kubernetes namespace for deployment
+      default: "atauth"
+
+  workspaces:
+    - name: source
+      description: Workspace for source code
+    - name: docker-credentials
+      description: Docker registry credentials
+
+  tasks:
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      workspaces:
+        - name: output
+          workspace: source
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+        - name: depth
+          value: "1"
+
+    - name: build-push
+      taskRef:
+        name: kaniko
+        kind: ClusterTask
+      runAfter:
+        - fetch-source
+      workspaces:
+        - name: source
+          workspace: source
+        - name: dockerconfig
+          workspace: docker-credentials
+      params:
+        - name: IMAGE
+          value: $(params.image-registry)/$(params.image-name):$(params.image-tag)
+        - name: CONTEXT
+          value: ./gateway
+        - name: DOCKERFILE
+          value: ./gateway/Dockerfile
+        - name: EXTRA_ARGS
+          value:
+            - --cache=true
+            - --cache-repo=$(params.image-registry)/$(params.image-name)/cache
+
+    - name: deploy
+      taskRef:
+        name: kubernetes-actions
+        kind: ClusterTask
+      runAfter:
+        - build-push
+      workspaces:
+        - name: manifest-dir
+          workspace: source
+      params:
+        - name: script
+          value: |
+            cd gateway/k8s
+
+            # Create namespace if not exists
+            kubectl create namespace $(params.deploy-namespace) --dry-run=client -o yaml | kubectl apply -f -
+
+            # Apply kustomization with new image
+            kubectl kustomize . | \
+              sed "s|atauth-gateway:latest|$(params.image-registry)/$(params.image-name):$(params.image-tag)|g" | \
+              kubectl apply -f -
+
+            # Wait for deployment
+            kubectl -n $(params.deploy-namespace) rollout status deployment/atauth-gateway --timeout=300s
+
+            echo "Deployment complete!"

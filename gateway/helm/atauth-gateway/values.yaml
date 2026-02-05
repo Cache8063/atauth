@@ -1,0 +1,149 @@
+# ATAuth Gateway Helm Values
+
+# Image configuration
+image:
+  repository: atauth-gateway
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Image pull secrets (if using private registry)
+imagePullSecrets: []
+
+# Number of replicas (use 1 for SQLite)
+replicaCount: 1
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: auth.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: atauth-gateway-tls
+    #   hosts:
+    #     - auth.example.com
+
+# Resource limits
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+# Persistent storage for SQLite database
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  existingClaim: ""
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity: {}
+
+# ATAuth Gateway configuration
+config:
+  # Server
+  port: 3100
+  host: "0.0.0.0"
+
+  # OAuth client configuration (for AT Protocol)
+  oauthClientId: "https://auth.example.com/client-metadata.json"
+  oauthRedirectUri: "https://auth.example.com/auth/callback"
+
+  # CORS origins (comma-separated)
+  corsOrigins: "https://example.com"
+
+  # OIDC configuration
+  oidc:
+    enabled: true
+    issuer: "https://auth.example.com"
+    keyAlgorithm: "ES256"
+
+  # Passkey/WebAuthn configuration
+  passkey:
+    enabled: true
+    rpName: "ATAuth"
+    rpId: "auth.example.com"
+    origin: "https://auth.example.com"
+
+  # MFA configuration
+  mfa:
+    enabled: true
+    totpIssuer: "ATAuth"
+    backupCodesCount: 10
+
+  # Email configuration
+  email:
+    enabled: false
+    provider: "smtp"
+    from: "ATAuth <noreply@example.com>"
+    codeExpiry: 900
+
+# Secrets (set via --set or external secret management)
+secrets:
+  # Admin token for API access
+  # Generate with: openssl rand -hex 32
+  adminToken: ""
+
+  # OIDC key encryption secret
+  oidcKeySecret: ""
+
+  # MFA encryption key (32 bytes hex)
+  mfaEncryptionKey: ""
+
+  # SMTP configuration (if email.enabled)
+  smtp:
+    host: ""
+    port: "587"
+    secure: "false"
+    user: ""
+    pass: ""
+
+  # Email API key (alternative to SMTP)
+  emailApiKey: ""
+
+# External secrets (use existing secrets)
+externalSecrets:
+  # Use an existing secret for sensitive values
+  enabled: false
+  secretName: ""

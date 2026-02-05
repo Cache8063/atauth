@@ -1,8 +1,10 @@
 # Dependencies
 node_modules/
+admin-ui/node_modules/
 
 # Build output (rebuilt in container)
 dist/
+public/admin/
 
 # Development files
 *.log
@@ -29,3 +31,7 @@ coverage/
 
 # Data (mounted as volume)
 data/
+
+# Kubernetes and Helm (not needed in image)
+k8s/
+helm/

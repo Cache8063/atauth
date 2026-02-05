@@ -1,23 +1,43 @@
 # ATAuth Gateway
-# AT Protocol OAuth gateway for self-hosted authentication
+# AT Protocol OAuth gateway with OIDC provider support
 #
 # Build: docker build -t atauth-gateway .
 # Run:   docker run -p 3100:3100 -v ./data:/app/data atauth-gateway
 
-FROM node:20-alpine AS builder
+# ============================================
+# Stage 1: Build Admin UI
+# ============================================
+FROM node:20-alpine AS admin-ui-builder
+
+WORKDIR /app/admin-ui
+
+# Install dependencies
+COPY admin-ui/package.json admin-ui/package-lock.json* ./
+RUN npm ci
+
+# Build admin UI
+COPY admin-ui/ ./
+RUN npm run build
+
+# ============================================
+# Stage 2: Build Gateway Backend
+# ============================================
+FROM node:20-alpine AS backend-builder
 
 WORKDIR /app
 
 # Install dependencies
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json* ./
+RUN npm ci
 
 # Build TypeScript
 COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
 
-# Production image
+# ============================================
+# Stage 3: Production Image
+# ============================================
 FROM node:20-alpine
 
 WORKDIR /app
@@ -27,14 +47,17 @@ RUN addgroup -g 1001 atauth && \
     adduser -u 1001 -G atauth -s /bin/sh -D atauth
 
 # Install production dependencies only
-COPY package.json ./
-RUN npm install --omit=dev && npm cache clean --force
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy built files
-COPY --from=builder /app/dist ./dist
+# Copy built backend
+COPY --from=backend-builder /app/dist ./dist
+
+# Copy built admin UI (built to ../public/admin relative to admin-ui)
+COPY --from=admin-ui-builder /app/public/admin ./public/admin
 
 # Create data directory
-RUN mkdir -p /app/data && chown -R atauth:atauth /app/data
+RUN mkdir -p /app/data && chown -R atauth:atauth /app
 
 # Switch to non-root user
 USER atauth

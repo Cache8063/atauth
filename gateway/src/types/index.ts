@@ -4,6 +4,12 @@
  * Defines the token format and interfaces for application authentication
  */
 
+// Re-export all types from sub-modules
+export * from './oidc.js';
+export * from './passkey.js';
+export * from './mfa.js';
+export * from './email.js';
+
 export interface GatewayTokenPayload {
   /** AT Protocol DID (e.g., "did:plc:xyz...") */
   did: string;
