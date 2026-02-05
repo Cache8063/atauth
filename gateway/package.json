@@ -10,7 +10,12 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run src/",
+    "test:e2e": "vitest run tests/"
   },
   "keywords": [
     "atproto",
@@ -44,12 +49,16 @@
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^7.0.9",
     "@types/qrcode": "^1.5.6",
+    "@types/supertest": "^6.0.3",
     "@types/uuid": "^9.0.7",
+    "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.0.0",
     "globals": "^15.0.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=18.0.0"
