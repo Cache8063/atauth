@@ -82,7 +82,10 @@ export function createAuthorizeRouter(
       }
 
       // Validate redirect_uri
+      console.log(`[OIDC] Validating redirect_uri: "${redirect_uri}"`);
+      console.log(`[OIDC] Allowed redirect_uris: ${JSON.stringify(client.redirect_uris)}`);
       if (!client.redirect_uris.includes(redirect_uri)) {
+        console.log(`[OIDC] redirect_uri mismatch!`);
         return res.status(400).json({
           error: 'invalid_request',
           error_description: 'Invalid redirect_uri',
@@ -128,55 +131,243 @@ export function createAuthorizeRouter(
         expires_at: Math.floor(Date.now() / 1000) + 600, // 10 minutes
       };
 
-      // Store state for callback
-      // We use the AT Protocol OAuth flow as the identity provider
-      // Generate AT Protocol OAuth URL
-      const atprotoAuth = await oauthService.generateAuthUrl(
+      // Store the OIDC authorization request and show login page
+      // We need the user's handle before we can start AT Protocol OAuth
+
+      // Save the pending authorization request
+      db.saveAuthorizationCode({
+        code: authCode,
         client_id,
-        '', // No handle yet - will be filled by user
-        `${oidcService.issuer}/oauth/callback`
-      );
+        redirect_uri,
+        scope: scopeValidation.scopes.join(' '),
+        nonce,
+        code_challenge,
+        code_challenge_method: code_challenge_method as 'S256' | 'plain' | undefined,
+        did: '', // Will be filled on callback
+        handle: '', // Will be filled on callback
+        created_at: authState.created_at,
+        expires_at: authState.expires_at,
+        used: false,
+      });
 
-      if (!atprotoAuth) {
-        return redirectWithError(res, redirect_uri, state, 'server_error', 'Failed to generate auth URL');
+      // Show login page asking for handle
+      const loginPageHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in - ATAuth</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      color: #1a1a2e;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 32px;
+      font-size: 14px;
+    }
+    .client-info {
+      background: #f5f5f5;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: #444;
+    }
+    .client-info strong { color: #1a1a2e; }
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: #333;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    .hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 8px;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 24px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .error {
+      background: #fee;
+      color: #c00;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      display: none;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 24px;
+      font-size: 32px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">🔐</div>
+    <h1>Sign in with ATAuth</h1>
+    <p class="subtitle">Use your Bluesky or AT Protocol identity</p>
+
+    <div class="client-info">
+      Signing in to <strong>${client.name || client_id}</strong>
+    </div>
+
+    <div class="error" id="error"></div>
+
+    <form id="loginForm" action="/oauth/authorize/login" method="POST">
+      <input type="hidden" name="auth_code" value="${authCode}">
+      <input type="hidden" name="state" value="${state || ''}">
+
+      <label for="handle">Your Handle</label>
+      <input
+        type="text"
+        id="handle"
+        name="handle"
+        placeholder="you.bsky.social"
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+        required
+      >
+      <p class="hint">Enter your Bluesky handle or custom domain</p>
+
+      <button type="submit" id="submitBtn">Continue</button>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const handleInput = document.getElementById('handle');
+    const submitBtn = document.getElementById('submitBtn');
+    const errorDiv = document.getElementById('error');
+
+    form.addEventListener('submit', function(e) {
+      const handle = handleInput.value.trim();
+      if (!handle) {
+        e.preventDefault();
+        errorDiv.textContent = 'Please enter your handle';
+        errorDiv.style.display = 'block';
+        return;
       }
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Redirecting...';
+    });
+  </script>
+</body>
+</html>`;
 
-      // Store our OIDC state in the database, keyed by AT Protocol state
-      const atprotoState = atprotoAuth.state;
-      if (atprotoState) {
-        db.saveAuthorizationCode({
-          code: authCode,
-          client_id,
-          redirect_uri,
-          scope: scopeValidation.scopes.join(' '),
-          nonce,
-          code_challenge,
-          code_challenge_method: code_challenge_method as 'S256' | 'plain' | undefined,
-          did: '', // Will be filled on callback
-          handle: '', // Will be filled on callback
-          created_at: authState.created_at,
-          expires_at: authState.expires_at,
-          used: false,
-        });
-
-        // Store mapping from AT Protocol state to our auth code
-        db.saveOAuthState({
-          state: atprotoState,
-          code_verifier: authCode, // Reuse this field to store our auth code
-          app_id: client_id,
-          redirect_uri,
-          created_at: authState.created_at,
-        });
-      }
-
-      // Redirect user to AT Protocol OAuth
-      res.redirect(atprotoAuth.url);
+      res.type('html').send(loginPageHtml);
     } catch (error) {
       console.error('[OIDC Authorize] Error:', error);
       res.status(500).json({
         error: 'server_error',
         error_description: 'Internal server error',
       });
+    }
+  });
+
+  /**
+   * POST /oauth/authorize/login
+   * Handle the login form submission with user's handle
+   */
+  router.post('/authorize/login', async (req: Request, res: Response) => {
+    try {
+      const { auth_code, handle, state } = req.body;
+
+      if (!auth_code || !handle) {
+        return res.status(400).send('Missing required parameters');
+      }
+
+      // Get the pending authorization
+      const authData = db.getAuthorizationCode(auth_code);
+      if (!authData) {
+        return res.status(400).send('Authorization request expired or invalid');
+      }
+
+      if (authData.used) {
+        return res.status(400).send('Authorization code already used');
+      }
+
+      // Start AT Protocol OAuth with the user's handle
+      const atprotoAuth = await oauthService.generateAuthUrl(
+        authData.client_id,
+        handle.trim(),
+        `${oidcService.issuer}/oauth/callback`
+      );
+
+      if (!atprotoAuth) {
+        return res.status(500).send('Failed to start authentication');
+      }
+
+      // Store mapping from AT Protocol state to our auth code
+      db.saveOAuthState({
+        state: atprotoAuth.state,
+        code_verifier: auth_code, // Store our auth code here for the callback
+        app_id: authData.client_id,
+        redirect_uri: authData.redirect_uri,
+        created_at: Math.floor(Date.now() / 1000),
+      });
+
+      // Redirect to AT Protocol OAuth
+      res.redirect(atprotoAuth.url);
+    } catch (error) {
+      console.error('[OIDC Login] Error:', error);
+      res.status(500).send('Authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   });
 
