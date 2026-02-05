@@ -139,6 +139,7 @@ export class DatabaseService {
         client_id TEXT NOT NULL,
         redirect_uri TEXT NOT NULL,
         scope TEXT NOT NULL,
+        state TEXT,
         nonce TEXT,
         code_challenge TEXT,
         code_challenge_method TEXT,
@@ -153,6 +154,13 @@ export class DatabaseService {
 
       CREATE INDEX IF NOT EXISTS idx_auth_codes_expires ON authorization_codes(expires_at);
     `);
+
+    // Add state column if it doesn't exist (migration for existing databases)
+    try {
+      this.db.exec('ALTER TABLE authorization_codes ADD COLUMN state TEXT');
+    } catch {
+      // Column already exists
+    }
 
     // Create refresh tokens table
     this.db.exec(`
@@ -577,14 +585,15 @@ export class DatabaseService {
 
   saveAuthorizationCode(code: AuthorizationCode): void {
     const stmt = this.db.prepare(`
-      INSERT INTO authorization_codes (code, client_id, redirect_uri, scope, nonce, code_challenge, code_challenge_method, did, handle, user_id, created_at, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO authorization_codes (code, client_id, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, did, handle, user_id, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       code.code,
       code.client_id,
       code.redirect_uri,
       code.scope,
+      code.state,
       code.nonce,
       code.code_challenge,
       code.code_challenge_method,
@@ -603,6 +612,7 @@ export class DatabaseService {
       client_id: string;
       redirect_uri: string;
       scope: string;
+      state: string | null;
       nonce: string | null;
       code_challenge: string | null;
       code_challenge_method: 'S256' | 'plain' | null;
@@ -619,6 +629,7 @@ export class DatabaseService {
       client_id: row.client_id,
       redirect_uri: row.redirect_uri,
       scope: row.scope,
+      state: row.state ?? undefined,
       nonce: row.nonce ?? undefined,
       code_challenge: row.code_challenge ?? undefined,
       code_challenge_method: row.code_challenge_method ?? undefined,

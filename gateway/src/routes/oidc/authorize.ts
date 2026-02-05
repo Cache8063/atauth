@@ -140,6 +140,7 @@ export function createAuthorizeRouter(
         client_id,
         redirect_uri,
         scope: scopeValidation.scopes.join(' '),
+        state,
         nonce,
         code_challenge,
         code_challenge_method: code_challenge_method as 'S256' | 'plain' | undefined,
@@ -427,7 +428,13 @@ export function createAuthorizeRouter(
       }
 
       // Exchange the AT Protocol code for tokens
-      const callbackResult = await oauthService.handleCallback(code, state, iss || '');
+      // Build URLSearchParams from the callback query parameters
+      const callbackParams = new URLSearchParams();
+      callbackParams.set('code', code);
+      callbackParams.set('state', state);
+      if (iss) callbackParams.set('iss', iss);
+
+      const callbackResult = await oauthService.handleCallback(callbackParams);
       if (!callbackResult) {
         return res.status(500).json({
           error: 'server_error',
