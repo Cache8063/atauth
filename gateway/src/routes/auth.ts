@@ -29,9 +29,12 @@ function isValidRedirectUri(redirectUri: string, allowedUrl: string | undefined)
     const redirect = new URL(redirectUri);
     const protocol = redirect.protocol;
 
-    // Only allow HTTPS in production (or HTTP for localhost dev)
+    // Only allow HTTPS in production, with exceptions for:
+    // - localhost/127.0.0.1 (development)
+    // - .ts.net domains (Tailscale internal network - trusted)
     const isLocalhost = redirect.hostname === 'localhost' || redirect.hostname === '127.0.0.1';
-    if (protocol !== 'https:' && !(protocol === 'http:' && isLocalhost)) {
+    const isTailscale = redirect.hostname.endsWith('.ts.net');
+    if (protocol !== 'https:' && !(protocol === 'http:' && (isLocalhost || isTailscale))) {
       return false;
     }
 
