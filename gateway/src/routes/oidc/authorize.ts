@@ -371,6 +371,118 @@ export function createAuthorizeRouter(
     }
   });
 
+  /**
+   * GET /oauth/callback
+   * Handle the AT Protocol OAuth callback and complete the OIDC flow
+   */
+  router.get('/callback', async (req: Request, res: Response) => {
+    try {
+      const { code, state, error, error_description, iss } = req.query as {
+        code?: string;
+        state?: string;
+        error?: string;
+        error_description?: string;
+        iss?: string;
+      };
+
+      console.log(`[OIDC Callback] Received callback with state: ${state}`);
+
+      // Handle AT Protocol OAuth errors
+      if (error) {
+        console.error(`[OIDC Callback] AT Protocol error: ${error} - ${error_description}`);
+        // We need to redirect back to the original client with the error
+        // But we need the state to find the original request
+        if (state) {
+          const savedState = db.getOAuthState(state);
+          if (savedState) {
+            return redirectWithError(
+              res,
+              savedState.redirect_uri,
+              undefined,
+              'access_denied',
+              error_description || 'Authentication failed'
+            );
+          }
+        }
+        return res.status(400).json({
+          error: 'access_denied',
+          error_description: error_description || 'Authentication failed',
+        });
+      }
+
+      if (!code || !state) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing code or state',
+        });
+      }
+
+      // Get the saved state
+      const savedState = db.getOAuthState(state);
+      if (!savedState) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Invalid or expired state',
+        });
+      }
+
+      // Exchange the AT Protocol code for tokens
+      const callbackResult = await oauthService.handleCallback(code, state, iss || '');
+      if (!callbackResult) {
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: 'Failed to complete authentication',
+        });
+      }
+
+      // Get the user's DID and handle from the AT Protocol session
+      const { did, handle } = callbackResult;
+      console.log(`[OIDC Callback] Authenticated user: ${handle} (${did})`);
+
+      // Get the OIDC authorization code we saved earlier (stored in code_verifier field)
+      const oidcAuthCode = savedState.code_verifier;
+      if (!oidcAuthCode) {
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: 'OIDC authorization state not found',
+        });
+      }
+
+      // Update the authorization code with the user's identity
+      const authData = db.getAuthorizationCode(oidcAuthCode);
+      if (!authData) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'OIDC authorization expired',
+        });
+      }
+
+      // Update with user info
+      db.updateAuthorizationCodeUser(oidcAuthCode, did, handle);
+
+      // Build the redirect URL back to the original client
+      const clientRedirectUrl = new URL(authData.redirect_uri);
+      clientRedirectUrl.searchParams.set('code', oidcAuthCode);
+      if (authData.state) {
+        clientRedirectUrl.searchParams.set('state', authData.state);
+      }
+
+      console.log(`[OIDC Callback] Redirecting to client: ${authData.redirect_uri}`);
+
+      // Clean up the AT Protocol state
+      db.deleteOAuthState(state);
+
+      // Redirect back to the OIDC client
+      res.redirect(clientRedirectUrl.toString());
+    } catch (error) {
+      console.error('[OIDC Callback] Error:', error);
+      res.status(500).json({
+        error: 'server_error',
+        error_description: 'Internal server error',
+      });
+    }
+  });
+
   return router;
 }
 
