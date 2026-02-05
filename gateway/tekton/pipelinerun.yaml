@@ -1,0 +1,36 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: atauth-gateway-build-
+  namespace: tekton-pipelines
+spec:
+  pipelineRef:
+    name: atauth-gateway-build
+  params:
+    - name: git-url
+      value: "https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth.git"
+    - name: git-revision
+      value: "main"
+    - name: image-registry
+      value: "gitea.cloudforest-basilisk.ts.net"
+    - name: image-name
+      value: "arcnode.xyz/atauth-gateway"
+    - name: image-tag
+      value: "latest"
+    - name: deploy-namespace
+      value: "atauth"
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+    - name: docker-credentials
+      secret:
+        secretName: registry-credentials
+  podTemplate:
+    securityContext:
+      fsGroup: 65532

@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atauth-gateway
+  namespace: atauth
+  labels:
+    app.kubernetes.io/name: atauth-gateway
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: atauth-gateway
+  strategy:
+    type: Recreate  # Use Recreate due to SQLite file lock
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: atauth-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+
+      containers:
+        - name: gateway
+          image: atauth-gateway:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 3100
+              protocol: TCP
+
+          envFrom:
+            - configMapRef:
+                name: atauth-gateway-config
+            - secretRef:
+                name: atauth-gateway-secrets
+
+          env:
+            - name: DB_PATH
+              value: /app/data/gateway.db
+
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: atauth-gateway-data
+
+      # Optional: Node selector for specific nodes
+      # nodeSelector:
+      #   kubernetes.io/os: linux
+
+      # Optional: Tolerations
+      # tolerations:
+      #   - key: "node-role.kubernetes.io/control-plane"
+      #     operator: "Exists"
+      #     effect: "NoSchedule"

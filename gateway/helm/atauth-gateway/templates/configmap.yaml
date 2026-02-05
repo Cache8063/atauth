@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "atauth-gateway.fullname" . }}-config
+  labels:
+    {{- include "atauth-gateway.labels" . | nindent 4 }}
+data:
+  PORT: {{ .Values.config.port | quote }}
+  HOST: {{ .Values.config.host | quote }}
+  NODE_ENV: "production"
+
+  OAUTH_CLIENT_ID: {{ .Values.config.oauthClientId | quote }}
+  OAUTH_REDIRECT_URI: {{ .Values.config.oauthRedirectUri | quote }}
+  CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
+
+  OIDC_ENABLED: {{ .Values.config.oidc.enabled | quote }}
+  OIDC_ISSUER: {{ .Values.config.oidc.issuer | quote }}
+  OIDC_KEY_ALGORITHM: {{ .Values.config.oidc.keyAlgorithm | quote }}
+
+  PASSKEY_ENABLED: {{ .Values.config.passkey.enabled | quote }}
+  WEBAUTHN_RP_NAME: {{ .Values.config.passkey.rpName | quote }}
+  WEBAUTHN_RP_ID: {{ .Values.config.passkey.rpId | quote }}
+  WEBAUTHN_ORIGIN: {{ .Values.config.passkey.origin | quote }}
+
+  MFA_ENABLED: {{ .Values.config.mfa.enabled | quote }}
+  MFA_TOTP_ISSUER: {{ .Values.config.mfa.totpIssuer | quote }}
+  MFA_BACKUP_CODES_COUNT: {{ .Values.config.mfa.backupCodesCount | quote }}
+
+  EMAIL_ENABLED: {{ .Values.config.email.enabled | quote }}
+  EMAIL_PROVIDER: {{ .Values.config.email.provider | quote }}
+  EMAIL_FROM: {{ .Values.config.email.from | quote }}
+  EMAIL_CODE_EXPIRY: {{ .Values.config.email.codeExpiry | quote }}

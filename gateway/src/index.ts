@@ -3,6 +3,7 @@
  *
  * AT Protocol OAuth gateway for application authentication.
  * Issues HMAC-signed tokens for backend servers to verify user identity.
+ * Now with OpenID Connect (OIDC) provider support.
  */
 
 import express from 'express';
@@ -13,10 +14,18 @@ import fs from 'fs';
 
 import { DatabaseService } from './services/database.js';
 import { OAuthService } from './services/oauth.js';
+import { OIDCService } from './services/oidc/index.js';
+import { PasskeyService } from './services/passkey.js';
+import { MFAService } from './services/mfa.js';
+import { EmailService } from './services/email.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { createTokenRoutes } from './routes/token.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createSessionRoutes } from './routes/session.js';
+import { createOIDCRouter } from './routes/oidc/index.js';
+import { createPasskeyRouter } from './routes/passkey.js';
+import { createMFARouter } from './routes/mfa.js';
+import { createEmailRouter } from './routes/email.js';
 import { authRateLimit, apiRateLimit, adminRateLimit } from './middleware/rateLimit.js';
 import { HttpError } from './utils/errors.js';
 
@@ -25,7 +34,7 @@ const config = {
   port: parseInt(process.env.PORT || '3100', 10),
   host: process.env.HOST || '0.0.0.0',
 
-  // OAuth client configuration
+  // OAuth client configuration (for AT Protocol)
   clientId: process.env.OAUTH_CLIENT_ID || 'https://auth.example.com/client-metadata.json',
   redirectUri: process.env.OAUTH_REDIRECT_URI || 'https://auth.example.com/auth/callback',
 
@@ -37,6 +46,47 @@ const config = {
 
   // CORS origins
   corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
+
+  // OIDC configuration
+  oidc: {
+    enabled: process.env.OIDC_ENABLED === 'true',
+    issuer: process.env.OIDC_ISSUER || 'https://auth.example.com',
+    keySecret: process.env.OIDC_KEY_SECRET || 'change-me-in-production-32-bytes!',
+    keyAlgorithm: (process.env.OIDC_KEY_ALGORITHM || 'ES256') as 'ES256' | 'RS256',
+  },
+
+  // Passkey/WebAuthn configuration
+  passkey: {
+    enabled: process.env.PASSKEY_ENABLED !== 'false', // Enabled by default
+    rpName: process.env.WEBAUTHN_RP_NAME || 'ATAuth',
+    rpID: process.env.WEBAUTHN_RP_ID || 'localhost',
+    origin: process.env.WEBAUTHN_ORIGIN || 'http://localhost:3100',
+  },
+
+  // MFA/TOTP configuration
+  mfa: {
+    enabled: process.env.MFA_ENABLED !== 'false', // Enabled by default
+    issuer: process.env.MFA_TOTP_ISSUER || 'ATAuth',
+    // 32-byte hex encryption key for TOTP secrets (64 hex characters)
+    encryptionKey: process.env.MFA_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    backupCodesCount: parseInt(process.env.MFA_BACKUP_CODES_COUNT || '10', 10),
+  },
+
+  // Email configuration
+  email: {
+    enabled: process.env.EMAIL_ENABLED === 'true', // Disabled by default
+    provider: (process.env.EMAIL_PROVIDER || 'mock') as 'smtp' | 'resend' | 'sendgrid' | 'mailgun' | 'mock',
+    from: process.env.EMAIL_FROM || 'ATAuth <noreply@example.com>',
+    smtp: {
+      host: process.env.SMTP_HOST || 'localhost',
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: process.env.SMTP_SECURE === 'true',
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    apiKey: process.env.EMAIL_API_KEY,
+    codeExpiry: parseInt(process.env.EMAIL_CODE_EXPIRY || '900', 10), // 15 minutes
+  },
 };
 
 async function main(): Promise<void> {
@@ -59,6 +109,57 @@ async function main(): Promise<void> {
     console.error('Failed to initialize OAuth client:', error);
   }
 
+  // Initialize OIDC service if enabled
+  let oidcService: OIDCService | null = null;
+  if (config.oidc.enabled) {
+    oidcService = new OIDCService(db, {
+      issuer: config.oidc.issuer,
+      keySecret: config.oidc.keySecret,
+      keyAlgorithm: config.oidc.keyAlgorithm,
+    });
+    try {
+      await oidcService.initialize(config.oidc.keyAlgorithm);
+      console.log('OIDC service initialized');
+    } catch (error) {
+      console.error('Failed to initialize OIDC service:', error);
+    }
+  }
+
+  // Initialize Passkey service
+  let passkeyService: PasskeyService | null = null;
+  if (config.passkey.enabled) {
+    passkeyService = new PasskeyService(db, {
+      rpName: config.passkey.rpName,
+      rpID: config.passkey.rpID,
+      origin: config.passkey.origin,
+    });
+    console.log('Passkey service initialized');
+  }
+
+  // Initialize MFA service
+  let mfaService: MFAService | null = null;
+  if (config.mfa.enabled) {
+    mfaService = new MFAService(db, {
+      issuer: config.mfa.issuer,
+      encryptionKey: config.mfa.encryptionKey,
+      backupCodesCount: config.mfa.backupCodesCount,
+    });
+    console.log('MFA service initialized');
+  }
+
+  // Initialize Email service
+  let emailService: EmailService | null = null;
+  if (config.email.enabled) {
+    emailService = new EmailService(db, {
+      provider: config.email.provider,
+      smtp: config.email.smtp,
+      apiKey: config.email.apiKey,
+      from: config.email.from,
+      codeExpiry: config.email.codeExpiry,
+    });
+    console.log('Email service initialized');
+  }
+
   // Create Express app
   const app = express();
 
@@ -70,7 +171,7 @@ async function main(): Promise<void> {
     origin: config.corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Session-Id'],
   }));
   app.use(express.json());
 
@@ -92,8 +193,45 @@ async function main(): Promise<void> {
   // Routes with rate limiting
   app.use('/auth', authRateLimit, createAuthRoutes(db, oauth));
   app.use('/token', apiRateLimit, createTokenRoutes(db));
-  app.use('/admin', adminRateLimit, createAdminRoutes(db, config.adminToken));
+  app.use('/admin', adminRateLimit, createAdminRoutes(db, config.adminToken, oidcService, passkeyService, mfaService));
   app.use('/session', apiRateLimit, createSessionRoutes(db));
+
+  // OIDC routes (if enabled)
+  if (oidcService) {
+    const { wellKnownRouter, oauthRouter } = createOIDCRouter(db, oidcService, oauth);
+    app.use('/.well-known', wellKnownRouter);
+    app.use('/oauth', authRateLimit, oauthRouter);
+    console.log('OIDC routes enabled');
+  }
+
+  // Passkey routes (if enabled)
+  if (passkeyService) {
+    app.use('/auth/passkey', authRateLimit, createPasskeyRouter(db, passkeyService, oidcService));
+    console.log('Passkey routes enabled');
+  }
+
+  // MFA routes (if enabled)
+  if (mfaService) {
+    app.use('/auth/mfa', authRateLimit, createMFARouter(db, mfaService, passkeyService, oidcService));
+    console.log('MFA routes enabled');
+  }
+
+  // Email routes (if enabled)
+  if (emailService) {
+    app.use('/auth/email', authRateLimit, createEmailRouter(db, emailService, oidcService));
+    console.log('Email routes enabled');
+  }
+
+  // Admin UI static files (if available)
+  const adminUiPath = path.join(process.cwd(), 'public', 'admin');
+  if (fs.existsSync(adminUiPath)) {
+    app.use('/admin', express.static(adminUiPath));
+    // SPA fallback for admin routes
+    app.get('/admin/*', (_req, res) => {
+      res.sendFile(path.join(adminUiPath, 'index.html'));
+    });
+    console.log('Admin UI enabled at /admin');
+  }
 
   // OAuth client metadata (for AT Protocol discovery)
   app.get('/client-metadata.json', (_req, res) => {
@@ -143,8 +281,13 @@ async function main(): Promise<void> {
   setInterval(() => {
     const statesDeleted = db.cleanupOldOAuthStates();
     const sessionsDeleted = db.cleanupExpiredSessions();
-    if (statesDeleted > 0 || sessionsDeleted > 0) {
-      console.log(`Cleanup: ${statesDeleted} OAuth states, ${sessionsDeleted} sessions`);
+    const authCodesDeleted = db.cleanupExpiredAuthorizationCodes();
+    const refreshTokensDeleted = db.cleanupExpiredRefreshTokens();
+    const emailCodesDeleted = db.cleanupExpiredEmailVerificationCodes();
+
+    const total = statesDeleted + sessionsDeleted + authCodesDeleted + refreshTokensDeleted + emailCodesDeleted;
+    if (total > 0) {
+      console.log(`Cleanup: ${statesDeleted} OAuth states, ${sessionsDeleted} sessions, ${authCodesDeleted} auth codes, ${refreshTokensDeleted} refresh tokens, ${emailCodesDeleted} email codes`);
     }
   }, 60 * 60 * 1000);
 
@@ -157,6 +300,27 @@ async function main(): Promise<void> {
       console.log('Admin endpoints enabled');
     } else {
       console.log('Admin endpoints disabled (set ADMIN_TOKEN to enable)');
+    }
+    if (config.oidc.enabled) {
+      console.log(`OIDC enabled - Issuer: ${config.oidc.issuer}`);
+      console.log(`OIDC Discovery: ${config.oidc.issuer}/.well-known/openid-configuration`);
+    } else {
+      console.log('OIDC disabled (set OIDC_ENABLED=true to enable)');
+    }
+    if (config.passkey.enabled) {
+      console.log(`Passkey enabled - RP ID: ${config.passkey.rpID}`);
+    } else {
+      console.log('Passkey disabled (set PASSKEY_ENABLED=true to enable)');
+    }
+    if (config.mfa.enabled) {
+      console.log(`MFA enabled - Issuer: ${config.mfa.issuer}`);
+    } else {
+      console.log('MFA disabled (set MFA_ENABLED=true to enable)');
+    }
+    if (config.email.enabled) {
+      console.log(`Email enabled - Provider: ${config.email.provider}`);
+    } else {
+      console.log('Email disabled (set EMAIL_ENABLED=true to enable)');
     }
   });
 }

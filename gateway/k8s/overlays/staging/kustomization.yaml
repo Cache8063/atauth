@@ -1,0 +1,88 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: atauth-staging
+
+resources:
+  - ../../base
+
+nameSuffix: -staging
+
+commonLabels:
+  environment: staging
+
+# Use staging image tag
+images:
+  - name: atauth-gateway
+    newName: gitea.cloudforest-basilisk.ts.net/arcnode.xyz/atauth-gateway
+    newTag: staging
+
+patches:
+  # Rename namespace
+  - target:
+      kind: Namespace
+      name: atauth
+    patch: |
+      - op: replace
+        path: /metadata/name
+        value: atauth-staging
+
+  # Reduce resources for staging
+  - target:
+      kind: Deployment
+      name: atauth-gateway
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "64Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "50m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "250m"
+
+  # Smaller PVC for staging
+  - target:
+      kind: PersistentVolumeClaim
+      name: atauth-gateway-data
+    patch: |
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: "512Mi"
+
+  # Update ingress host for staging
+  - target:
+      kind: Ingress
+      name: atauth-gateway
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: auth-staging.cloudforest-basilisk.ts.net
+
+  # Update ConfigMap with staging URLs
+  - target:
+      kind: ConfigMap
+      name: atauth-gateway-config
+    patch: |
+      - op: replace
+        path: /data/OIDC_ISSUER
+        value: "https://auth-staging.cloudforest-basilisk.ts.net"
+      - op: replace
+        path: /data/OAUTH_CLIENT_ID
+        value: "https://auth-staging.cloudforest-basilisk.ts.net/client-metadata.json"
+      - op: replace
+        path: /data/OAUTH_REDIRECT_URI
+        value: "https://auth-staging.cloudforest-basilisk.ts.net/auth/callback"
+      - op: replace
+        path: /data/WEBAUTHN_RP_ID
+        value: "auth-staging.cloudforest-basilisk.ts.net"
+      - op: replace
+        path: /data/WEBAUTHN_ORIGIN
+        value: "https://auth-staging.cloudforest-basilisk.ts.net"
+      - op: replace
+        path: /data/CORS_ORIGINS
+        value: "https://staging.example.com,http://localhost:3000"
