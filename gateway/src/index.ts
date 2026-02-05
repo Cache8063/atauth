@@ -226,8 +226,8 @@ async function main(): Promise<void> {
   const adminUiPath = path.join(process.cwd(), 'public', 'admin');
   if (fs.existsSync(adminUiPath)) {
     app.use('/admin', express.static(adminUiPath));
-    // SPA fallback for admin routes
-    app.get('/admin/*', (_req, res) => {
+    // SPA fallback for admin routes (path-to-regexp v8 requires named wildcards)
+    app.get('/admin/{*splat}', (_req, res) => {
       res.sendFile(path.join(adminUiPath, 'index.html'));
     });
     console.log('Admin UI enabled at /admin');
