@@ -73,6 +73,7 @@ export interface AuthorizationCode {
   client_id: string;
   redirect_uri: string;
   scope: string;
+  state?: string;
   nonce?: string;
   code_challenge?: string;
   code_challenge_method?: 'S256' | 'plain';
