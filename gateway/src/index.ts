@@ -174,6 +174,7 @@ async function main(): Promise<void> {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Session-Id'],
   }));
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   // Request logging
   app.use((req, _res, next) => {
