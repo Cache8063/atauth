@@ -636,6 +636,11 @@ export class DatabaseService {
     stmt.run(code);
   }
 
+  updateAuthorizationCodeUser(code: string, did: string, handle: string): void {
+    const stmt = this.db.prepare('UPDATE authorization_codes SET did = ?, handle = ? WHERE code = ?');
+    stmt.run(did, handle, code);
+  }
+
   cleanupExpiredAuthorizationCodes(): number {
     const now = Math.floor(Date.now() / 1000);
     const stmt = this.db.prepare('DELETE FROM authorization_codes WHERE expires_at < ?');

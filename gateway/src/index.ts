@@ -236,11 +236,18 @@ async function main(): Promise<void> {
 
   // OAuth client metadata (for AT Protocol discovery)
   app.get('/client-metadata.json', (_req, res) => {
+    // Build redirect URIs array - include both legacy and OIDC callback paths
+    const redirectUris = [config.redirectUri];
+    // Add OIDC callback if OIDC is enabled
+    if (config.oidc.enabled && config.oidc.issuer) {
+      redirectUris.push(`${config.oidc.issuer}/oauth/callback`);
+    }
+
     res.json({
       client_id: config.clientId,
       client_name: 'ATAuth Gateway',
       client_uri: config.clientId.replace('/client-metadata.json', ''),
-      redirect_uris: [config.redirectUri],
+      redirect_uris: redirectUris,
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       scope: 'atproto transition:generic',
