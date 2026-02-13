@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: atauth
+
+resources:
+  - ../../base
+
+images:
+  - name: atauth-gateway
+    newName: registry.digitalocean.com/ghostmesh-registry/atauth
+    newTag: latest
+
+patches:
+  # Set storageClass for DO block storage
+  - target:
+      kind: PersistentVolumeClaim
+      name: atauth-gateway-data
+    patch: |
+      - op: add
+        path: /spec/storageClassName
+        value: do-block-storage
+
+  # Use DO registry pull secret
+  - target:
+      kind: Deployment
+      name: atauth-gateway
+    patch: |
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value:
+          - name: registry-ghostmesh-registry
+
+labels:
+  - pairs:
+      environment: digitalocean
+    includeSelectors: false
