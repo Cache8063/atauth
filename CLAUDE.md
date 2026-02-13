@@ -3,75 +3,77 @@
 ## Overview
 ATAuth is an OpenID Connect (OIDC) Provider that uses AT Protocol OAuth (Bluesky) as the identity source. It allows applications to authenticate users via their Bluesky accounts.
 
+## Critical: Domain Configuration
+
+**IMPORTANT**: ATAuth staging MUST use `workingtitle.zip` domain, NOT `arcnode.xyz`.
+
+Why: The user's PDS is at `arcnode.xyz`. If ATAuth is also on `arcnode.xyz`, the browser sends `Sec-Fetch-Site: same-site` to the PDS OAuth endpoint, which the PDS rejects. Using a different domain (`workingtitle.zip`) makes it `cross-site`, which is allowed.
+
 ## Architecture
+
+```
+OIDC Client (e.g., Audiobookshelf)
+    ↓ redirects to
+ATAuth (auth-staging.workingtitle.zip) - OIDC Provider
+    ↓ redirects to
+User's PDS (arcnode.xyz) - AT Protocol OAuth
+    ↓ user authenticates, redirects back to
+ATAuth (receives AT Proto tokens, issues OIDC tokens)
+    ↓ redirects back to
+OIDC Client (receives OIDC tokens)
+```
+
 - **Gateway**: Node.js/Express 5, TypeScript, SQLite
-- **Identity Source**: AT Protocol OAuth (bsky.social)
+- **Identity Source**: AT Protocol OAuth (user's PDS, e.g., arcnode.xyz or bsky.social)
 - **Token Format**: ES256 signed JWTs
 - **PKCE**: Required for all flows
 
 ## Deployment
 
-### Staging
-- **Public URL**: `https://auth-staging.arcnode.xyz`
-- **OIDC Discovery**: `https://auth-staging.arcnode.xyz/.well-known/openid-configuration`
-- **Namespace**: `atauth-staging` (k3s)
-- **Image**: `10.43.37.39:5000/atauth:staging`
+### Current Production (DigitalOcean)
+- **Public URL**: `https://auth-staging.workingtitle.zip`
+- **Apricot Gateway**: `https://apricot.workingtitle.zip` (routes `/auth/*` and `/admin/*` to ATAuth)
+- **OIDC Discovery**: `https://auth-staging.workingtitle.zip/.well-known/openid-configuration`
+- **Cluster**: DO Managed Kubernetes (`storm-dr-cluster`, nyc1)
+- **Namespace**: `atauth`
+- **Registry**: `registry.digitalocean.com/ghostmesh-registry`
+- **Image**: `registry.digitalocean.com/ghostmesh-registry/atauth:latest`
+- **Storage**: SQLite on `do-block-storage` PVC
+- **Backups**: Every 6 hours to Backblaze B2 (`age` encrypted, cronjob in `backups` namespace)
 
-### Production
-- **Namespace**: `atauth` (k3s)
-- **Image**: `10.43.37.39:5000/atauth:latest`
-
-## Secrets Management
-
-### Kubernetes Secrets
-Secrets are stored in Kubernetes Secrets and referenced via environment variables:
-- `OIDC_KEY_SECRET`: 32-byte encryption key for OIDC signing keys
-- `MFA_ENCRYPTION_KEY`: 64-char hex key for TOTP secrets
-- `ADMIN_TOKEN`: Admin API authentication token
-
-### Best Practices
-1. **Never commit secrets to git** - Use Kubernetes Secrets or SealedSecrets
-2. **Rotate secrets regularly** - Especially OIDC_KEY_SECRET
-3. **Use strong entropy** - Generate with `openssl rand -hex 32`
-4. **Audit access** - Monitor who accesses secrets
-
-### Secret Generation Commands
+### Deployment Process (Manual)
 ```bash
-# OIDC Key Secret (32 bytes)
-openssl rand -hex 32
+# Build and push
+docker build --platform linux/amd64 -t registry.digitalocean.com/ghostmesh-registry/atauth:latest .
+docker push registry.digitalocean.com/ghostmesh-registry/atauth:latest
 
-# MFA Encryption Key (32 bytes = 64 hex chars)
-openssl rand -hex 32
-
-# Admin Token
-openssl rand -base64 32
+# Deploy
+kubectl rollout restart deployment/atauth-gateway -n atauth
 ```
 
-## OIDC Client Configuration
+### Local k3s (Suspended)
+Previously ran on k3s (Proxmox VMs 321/322) with two namespaces: `atauth-staging` (standalone)
+and `apricot` (integrated with PDS). Local k3s VMs shut down as of Feb 12, 2026.
+Config preserved in `gateway/k8s/overlays/staging/` and `gateway/k8s/overlays/production/`.
 
-### Registered Clients
+## Admin Access
 
-#### Audiobookshelf
+### Admin Token
+The admin token is stored in **Vaultwarden**:
+- **URL**: https://vaultwarden.cloudforest-basilisk.ts.net
+- **Location**: `ATAuth` folder → `Admin Token - Staging` or `Admin Token - Production`
 
-- **Client ID**: `audiobookshelf`
-- **Redirect URIs**:
-  - `http://audiobookshelf.cloudforest-basilisk.ts.net:13378/auth/openid/callback`
-  - `https://audiobookshelf.cloudforest-basilisk.ts.net:13378/auth/openid/callback`
-- **Grant Types**: `authorization_code`, `refresh_token`
-- **Scopes**: `openid`, `profile`, `email`
-- **PKCE**: Required
-- **Client Secret**: Stored in Vaultwarden under "ATAuth OIDC Clients"
-
-### Secrets Storage Location
-
-All OIDC client secrets are stored in **Vaultwarden** (LXC 120 @ vaultwarden.cloudforest-basilisk.ts.net):
-
-- Folder: `ATAuth/OIDC Clients`
-- Entry format: `{client_name} - {environment}`
-
-### Registering New Clients
+### Using Admin API
 ```bash
-curl -X POST "https://auth-staging.arcnode.xyz/admin/oidc/clients" \
+# Set token from Vaultwarden
+export ADMIN_TOKEN="<token-from-vaultwarden>"
+
+# List OIDC clients
+curl -s "https://auth-staging.workingtitle.zip/admin/oidc/clients" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
+
+# Create/update client
+curl -X POST "https://auth-staging.workingtitle.zip/admin/oidc/clients" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -82,22 +84,79 @@ curl -X POST "https://auth-staging.arcnode.xyz/admin/oidc/clients" \
   }'
 ```
 
+## OIDC Client Configuration
+
+### Registered Clients
+
+#### Audiobookshelf
+
+| Setting | Value |
+|---------|-------|
+| **Client ID** | `audiobookshelf` |
+| **Client Secret** | Vaultwarden → `ATAuth/OIDC Clients/Audiobookshelf` |
+| **Redirect URI** | `https://audiobookshelf.cloudforest-basilisk.ts.net/auth/openid/callback` |
+| **Grant Types** | `authorization_code`, `refresh_token` |
+| **Scopes** | `openid`, `profile`, `email` |
+| **PKCE** | Required |
+
+**Note**: Redirect URI is HTTPS without port (Tailscale serve handles TLS on port 443).
+
+### Secrets Storage
+All secrets in **Vaultwarden** (LXC 120 @ vaultwarden.cloudforest-basilisk.ts.net):
+- `ATAuth/Admin Token - Staging`
+- `ATAuth/Admin Token - Production`
+- `ATAuth/OIDC Clients/Audiobookshelf`
+- `ATAuth/OIDC Key Secret`
+
 ## Infrastructure
 
-### Cloudflare Tunnel
+### Cloudflare Configuration
+- **Account ID**: `abc90e3f264c71019a7f68204a5c4454`
 - **Tunnel ID**: `600f069c-4c53-4a59-b1fd-57c5ad09c044`
-- **Route**: `auth-staging.arcnode.xyz` → `atauth-gateway-staging.atauth-staging.svc.cluster.local:80`
+- **Routes**:
+  - `auth-staging.workingtitle.zip` → `http://atauth-gateway.atauth.svc.cluster.local:80` (DO cluster)
+  - `apricot.workingtitle.zip` → `http://atauth-gateway.atauth.svc.cluster.local:80` (DO cluster)
+  - `auth-staging.arcnode.xyz` → (DEPRECATED, causes same-site issues)
 
 ### Security (Cloudflare)
 - **WAF**: Cloudflare Managed Ruleset + OWASP Core (block mode)
 - **Rate Limiting**: 10 req/min on `/oauth/token`, `/oauth/authorize`, `/auth/*`
 - **TLS**: Minimum 1.3, Strict mode
-- **Exposed Credentials Check**: Enabled
 
-### Tekton Pipeline
-- **Pipeline**: `atauth-build` (in `apricot` namespace)
-- **Trigger**: Gitea webhook on push to `main`
-- **Registry**: `gitea.cloudforest-basilisk.ts.net/arcnode.xyz/atauth-gateway`
+### Cluster Resources
+```bash
+# Check deployment
+kubectl -n atauth get pods
+kubectl -n atauth logs -l app.kubernetes.io/part-of=atauth
+
+# View/edit config
+kubectl -n atauth get configmap atauth-gateway-config -o yaml
+
+# Restart after config change
+kubectl -n atauth rollout restart deployment atauth-gateway
+```
+
+## Related Services
+
+### User's PDS (arcnode.xyz)
+- **Server**: Hetzner Cloud (pds-hetzner)
+- **Public IP**: 46.224.33.19
+- **Tailscale**: 100.89.0.112 (pds-hetzner)
+- **SSH**: `ssh -i ~/.ssh/vaultnode_ed25519 root@100.89.0.112`
+- **OAuth Endpoint**: `https://arcnode.xyz/oauth/authorize`
+- **DID**: `did:plc:k23ujfuppr3hr4pxvtaz7jro`
+- **Handle**: `@bkb.arcnode.xyz`
+
+### Audiobookshelf
+- **Location**: LXC 107 on `pv4`
+- **Tailscale IP**: 100.115.188.60
+- **URL**: `https://audiobookshelf.cloudforest-basilisk.ts.net` (via Tailscale serve)
+- **Internal**: nginx (8080) → ABS (13378)
+- **SSH via pv4**: `ssh root@pv4.cloudforest-basilisk.ts.net "pct exec 107 -- <command>"`
+
+### Vaultwarden
+- **Location**: LXC 120
+- **URL**: https://vaultwarden.cloudforest-basilisk.ts.net
 
 ## Testing
 
@@ -110,9 +169,16 @@ npm run test         # All tests with watch
 npm run test:run     # All tests once
 ```
 
-### Test Coverage
-- **Unit Tests**: 65 tests (PKCE, Claims, Tokens services)
-- **E2E Tests**: 22 tests (full OIDC flow)
+### Manual OIDC Flow Test
+```bash
+# 1. Check discovery
+curl -s "https://auth-staging.workingtitle.zip/.well-known/openid-configuration" | jq .
+
+# 2. Check JWKS
+curl -s "https://auth-staging.workingtitle.zip/.well-known/jwks.json" | jq .
+
+# 3. Test in browser - go to Audiobookshelf and click "Login with OpenID"
+```
 
 ## API Endpoints
 
@@ -126,17 +192,27 @@ npm run test:run     # All tests once
 | `/oauth/userinfo` | User claims |
 | `/oauth/revoke` | Token revocation |
 
-### Admin Endpoints
+### Admin Endpoints (requires Bearer token)
 | Endpoint | Description |
 |----------|-------------|
-| `/admin/oidc/clients` | CRUD for OIDC clients |
-| `/admin/sessions` | Session management |
-| `/admin/keys` | Key management |
+| `GET /admin/oidc/clients` | List OIDC clients |
+| `POST /admin/oidc/clients` | Create OIDC client |
+| `GET /admin/oidc/clients/:id` | Get client details |
+| `PUT /admin/oidc/clients/:id` | Update client |
+| `DELETE /admin/oidc/clients/:id` | Delete client |
+| `GET /admin/sessions` | List sessions |
+| `GET /admin/keys` | List signing keys |
 
-## Related Services
+## Troubleshooting
 
-### Audiobookshelf
-- **Location**: LXC 107 on `pv4`
-- **IP**: 10.50.1.117 / 100.115.188.60 (Tailscale)
-- **Port**: 13378
-- **URL**: `http://audiobookshelf.cloudforest-basilisk.ts.net:13378`
+### "Forbidden sec-fetch-site header same-site"
+**Cause**: ATAuth and user's PDS are on the same registrable domain.
+**Fix**: Use `workingtitle.zip` for ATAuth, not `arcnode.xyz`.
+
+### "invalid_redirect_uri"
+**Cause**: Redirect URI in request doesn't match registered client.
+**Fix**: Check client's registered redirect_uris match exactly (including https vs http, port, path).
+
+### Token refresh failures / Users logged out
+**Cause**: iOS app sends chunked encoding with empty body on refreshSession.
+**Fix**: nginx with `proxy_pass_request_body off` for that endpoint (handled on PDS side).
