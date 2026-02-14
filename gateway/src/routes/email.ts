@@ -219,7 +219,7 @@ export function createEmailRouter(
         throw new HttpError(400, 'invalid_request', 'Invalid email address');
       }
 
-      const result = await emailService.requestRecovery(email);
+      await emailService.requestRecovery(email);
 
       // Always return success to avoid email enumeration
       res.json({
