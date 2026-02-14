@@ -328,7 +328,7 @@ export function createAuthorizeRouter(
    */
   router.post('/authorize/login', async (req: Request, res: Response) => {
     try {
-      const { auth_code, handle, state } = req.body;
+      const { auth_code, handle, state: _state } = req.body;
 
       if (!auth_code || !handle) {
         return res.status(400).send('Missing required parameters');
