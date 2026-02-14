@@ -1,5 +1,5 @@
 name: Deploy ATAuth to DO
-# CI/CD: Gitea Actions → DO managed k8s
+# CI/CD: Gitea Actions → DigitalOcean managed k8s
 
 on:
   push:
