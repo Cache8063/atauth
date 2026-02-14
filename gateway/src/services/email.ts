@@ -9,7 +9,7 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import type { DatabaseService } from './database.js';
-import type { EmailProviderConfig, UserEmail } from '../types/email.js';
+import type { UserEmail } from '../types/email.js';
 
 export interface EmailServiceConfig {
   provider: 'smtp' | 'resend' | 'sendgrid' | 'mailgun' | 'mock';

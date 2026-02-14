@@ -5,7 +5,6 @@
  */
 
 import { Router, Request, Response } from 'express';
-import crypto from 'crypto';
 import type { DatabaseService } from '../../services/database.js';
 import type { OIDCService } from '../../services/oidc/index.js';
 
