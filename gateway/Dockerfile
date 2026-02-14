@@ -56,8 +56,10 @@ COPY --from=backend-builder /app/dist ./dist
 # Copy built admin UI (built to ../public/admin relative to admin-ui)
 COPY --from=admin-ui-builder /app/public/admin ./public/admin
 
-# Create data directory
-RUN mkdir -p /app/data && chown -R atauth:atauth /app
+# Create writable data directory owned by app user
+# Note: node_modules/dist/public stay root-owned (read-only is fine)
+# Avoid chown -R /app which is extremely slow on overlay2+ZFS
+RUN mkdir -p /app/data && chown atauth:atauth /app/data
 
 # Switch to non-root user
 USER atauth
