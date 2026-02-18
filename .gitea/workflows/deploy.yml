@@ -42,6 +42,19 @@ jobs:
       - name: Run tests
         run: npm run test:run
 
+      - name: Notify test failure
+        if: failure()
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          FIRST_LINE=$(echo "${{ github.event.head_commit.message }}" | head -1)
+          MSG=$(jq -n --arg body "🧪 ${{ github.repository }}: tests FAILED @ ${SHORT_SHA}
+          └ ${FIRST_LINE}" '{msgtype: "m.text", body: $body}')
+          curl -sf -X PUT \
+            "${{ secrets.MATRIX_HOMESERVER_URL }}/_matrix/client/v3/rooms/${{ secrets.MATRIX_CICD_ROOM_ID }}/send/m.room.message/cicd-$(date +%s)-$$" \
+            -H "Authorization: Bearer ${{ secrets.MATRIX_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$MSG" || true
+
   build-and-deploy:
     name: Build, Push, Deploy
     runs-on: host
@@ -53,6 +66,20 @@ jobs:
       - name: Set short SHA
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Notify build started
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
+          MSG=$(jq -n --arg body "🔨 ${{ github.repository }}: build started @ ${{ steps.sha.outputs.short }}
+          ├ Commit: $FIRST_LINE
+          └ Triggered by: ${{ github.actor }}" '{msgtype: "m.text", body: $body}')
+          curl -sf -X PUT \
+            "${{ secrets.MATRIX_HOMESERVER_URL }}/_matrix/client/v3/rooms/${{ secrets.MATRIX_CICD_ROOM_ID }}/send/m.room.message/cicd-$(date +%s)-$$" \
+            -H "Authorization: Bearer ${{ secrets.MATRIX_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$MSG" || true
 
       - name: Login to DO Container Registry
         run: echo "${{ secrets.DO_REGISTRY_TOKEN }}" | docker login registry.digitalocean.com -u "${{ secrets.DO_REGISTRY_TOKEN }}" --password-stdin
@@ -76,6 +103,25 @@ jobs:
           KUBECONFIG=/tmp/kubeconfig kubectl rollout restart deployment/${{ env.DEPLOYMENT }} -n ${{ env.NAMESPACE }}
           KUBECONFIG=/tmp/kubeconfig kubectl rollout status deployment/${{ env.DEPLOYMENT }} -n ${{ env.NAMESPACE }} --timeout=120s
           rm -f /tmp/kubeconfig
+
+      - name: Notify build result
+        if: always()
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            EMOJI="✅"; STATUS="deployed"
+          else
+            EMOJI="❌"; STATUS="FAILED"
+          fi
+          FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
+          MSG=$(jq -n --arg body "${EMOJI} ${{ github.repository }}: ${STATUS} @ ${{ steps.sha.outputs.short }}
+          └ $FIRST_LINE" '{msgtype: "m.text", body: $body}')
+          curl -sf -X PUT \
+            "${{ secrets.MATRIX_HOMESERVER_URL }}/_matrix/client/v3/rooms/${{ secrets.MATRIX_CICD_ROOM_ID }}/send/m.room.message/cicd-$(date +%s)-$$" \
+            -H "Authorization: Bearer ${{ secrets.MATRIX_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$MSG" || true
 
       - name: Clean up Docker images
         if: always()
