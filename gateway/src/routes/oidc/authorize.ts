@@ -118,7 +118,10 @@ export function createAuthorizeRouter(
     var form = document.getElementById('loginForm');
     var submitBtn = document.getElementById('submitBtn');
     var errorDiv = document.getElementById('error');
-    form.addEventListener('submit', function() {
+    var submitted = false;
+    form.addEventListener('submit', function(e) {
+      if (submitted) { e.preventDefault(); return; }
+      submitted = true;
       submitBtn.disabled = true;
       submitBtn.textContent = 'Redirecting...';
       if (errorDiv) errorDiv.style.display = 'none';
@@ -305,11 +308,28 @@ export function createAuthorizeRouter(
       }
 
       // Start AT Protocol OAuth with the user's handle
-      const atprotoAuth = await oauthService.generateAuthUrl(
-        authData.client_id,
-        sanitizedHandle,
-        `${oidcService.issuer}/oauth/callback`
-      );
+      // Retry once on transient errors (bsky.social intermittently fails to fetch client metadata)
+      let atprotoAuth;
+      try {
+        atprotoAuth = await oauthService.generateAuthUrl(
+          authData.client_id,
+          sanitizedHandle,
+          `${oidcService.issuer}/oauth/callback`
+        );
+      } catch (firstErr) {
+        const msg = firstErr instanceof Error ? firstErr.message : '';
+        if (msg.includes('invalid_client_metadata')) {
+          console.log('[OIDC Login] Retrying after transient client_metadata error...');
+          await new Promise(r => setTimeout(r, 1000));
+          atprotoAuth = await oauthService.generateAuthUrl(
+            authData.client_id,
+            sanitizedHandle,
+            `${oidcService.issuer}/oauth/callback`
+          );
+        } else {
+          throw firstErr;
+        }
+      }
 
       if (!atprotoAuth) {
         return res.status(500).send('Failed to start authentication');
@@ -338,6 +358,8 @@ export function createAuthorizeRouter(
       const errMsg = error instanceof Error ? error.message : '';
       if (errMsg.includes('resolve identity') || errMsg.includes('Invalid handle')) {
         userMessage = 'Could not find that handle. Enter your full handle (e.g. yourname.bsky.social or your.custom.domain).';
+      } else if (errMsg.includes('invalid_client_metadata')) {
+        userMessage = 'Bluesky login is temporarily unavailable. Please wait a moment and try again.';
       }
       const isJsonRequest = req.is('json');
       if (isJsonRequest) {
