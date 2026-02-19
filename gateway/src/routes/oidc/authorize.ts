@@ -361,6 +361,15 @@ export function createAuthorizeRouter(
         return res.status(400).send('Missing required parameters');
       }
 
+      // Sanitize handle: strip @, add .bsky.social if no domain
+      let sanitizedHandle = handle.trim().replace(/^@/, '');
+      // Strip email-style @domain (e.g. "user@bsky.social" → "user.bsky.social")
+      sanitizedHandle = sanitizedHandle.replace(/@/, '.');
+      // If no dots, assume .bsky.social
+      if (!sanitizedHandle.includes('.')) {
+        sanitizedHandle = sanitizedHandle + '.bsky.social';
+      }
+
       // Get the pending authorization
       const authData = db.getAuthorizationCode(auth_code);
       if (!authData) {
@@ -374,7 +383,7 @@ export function createAuthorizeRouter(
       // Start AT Protocol OAuth with the user's handle
       const atprotoAuth = await oauthService.generateAuthUrl(
         authData.client_id,
-        handle.trim(),
+        sanitizedHandle,
         `${oidcService.issuer}/oauth/callback`
       );
 
@@ -400,11 +409,17 @@ export function createAuthorizeRouter(
       }
     } catch (error) {
       console.error('[OIDC Login] Error:', error);
+      // Provide a user-friendly error for common handle issues
+      let userMessage = 'Authentication failed. Please try again.';
+      const errMsg = error instanceof Error ? error.message : '';
+      if (errMsg.includes('resolve identity') || errMsg.includes('Invalid handle')) {
+        userMessage = 'Could not find that Bluesky handle. Enter your full handle (e.g. yourname.bsky.social).';
+      }
       const isJsonRequest = req.is('json');
       if (isJsonRequest) {
-        res.status(500).json({ error: 'Authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error') });
+        res.status(400).json({ error: userMessage });
       } else {
-        res.status(500).send('Authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        res.status(400).send(userMessage);
       }
     }
   });
