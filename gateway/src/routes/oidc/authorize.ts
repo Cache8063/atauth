@@ -391,15 +391,17 @@ export function createAuthorizeRouter(
         created_at: Math.floor(Date.now() / 1000),
       });
 
-      // Return redirect URL — JSON for fetch clients, 302 for form fallback
-      if (req.accepts('json')) {
+      // Return redirect URL — JSON for fetch clients, 302 for native form fallback
+      const isJsonRequest = req.is('json');
+      if (isJsonRequest) {
         res.json({ redirect_url: atprotoAuth.url });
       } else {
         res.redirect(atprotoAuth.url);
       }
     } catch (error) {
       console.error('[OIDC Login] Error:', error);
-      if (req.accepts('json')) {
+      const isJsonRequest = req.is('json');
+      if (isJsonRequest) {
         res.status(500).json({ error: 'Authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error') });
       } else {
         res.status(500).send('Authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
