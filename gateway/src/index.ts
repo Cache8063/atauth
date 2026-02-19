@@ -166,6 +166,15 @@ async function main(): Promise<void> {
   // Middleware
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        // Chrome enforces form-action on redirect targets (not just the action URL).
+        // The OIDC login form POSTs to self, but the response redirects to bsky.social
+        // or other PDS hosts. Without this, Chrome blocks the redirect silently.
+        'form-action': null,
+      },
+    },
   }));
   app.use(cors({
     origin: config.corsOrigins,
