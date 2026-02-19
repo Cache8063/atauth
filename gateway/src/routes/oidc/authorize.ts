@@ -297,16 +297,43 @@ export function createAuthorizeRouter(
     const submitBtn = document.getElementById('submitBtn');
     const errorDiv = document.getElementById('error');
 
-    form.addEventListener('submit', function(e) {
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
       const handle = handleInput.value.trim();
       if (!handle) {
-        e.preventDefault();
         errorDiv.textContent = 'Please enter your handle';
         errorDiv.style.display = 'block';
         return;
       }
       submitBtn.disabled = true;
       submitBtn.textContent = 'Redirecting...';
+      errorDiv.style.display = 'none';
+
+      try {
+        const res = await fetch('/oauth/authorize/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({
+            auth_code: form.querySelector('[name="auth_code"]').value,
+            state: form.querySelector('[name="state"]').value,
+            handle: handle
+          })
+        });
+        const data = await res.json();
+        if (data.redirect_url) {
+          window.location.href = data.redirect_url;
+        } else {
+          errorDiv.textContent = data.error || 'Login failed';
+          errorDiv.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Continue';
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Continue';
+      }
     });
   </script>
 </body>
@@ -364,11 +391,19 @@ export function createAuthorizeRouter(
         created_at: Math.floor(Date.now() / 1000),
       });
 
-      // Redirect to AT Protocol OAuth
-      res.redirect(atprotoAuth.url);
+      // Return redirect URL — JSON for fetch clients, 302 for form fallback
+      if (req.accepts('json')) {
+        res.json({ redirect_url: atprotoAuth.url });
+      } else {
+        res.redirect(atprotoAuth.url);
+      }
     } catch (error) {
       console.error('[OIDC Login] Error:', error);
-      res.status(500).send('Authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      if (req.accepts('json')) {
+        res.status(500).json({ error: 'Authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error') });
+      } else {
+        res.status(500).send('Authentication failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      }
     }
   });
 
