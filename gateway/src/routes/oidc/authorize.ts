@@ -283,8 +283,10 @@ export function createAuthorizeRouter(
         return res.status(400).send('Missing required parameters');
       }
 
-      // Sanitize handle: strip @, add .bsky.social if no domain
+      // Sanitize handle: strip @, fix common typos, add .bsky.social if no domain
       let sanitizedHandle = handle.trim().replace(/^@/, '');
+      // Replace colons with dots (common keyboard typo: "user:bsky.social")
+      sanitizedHandle = sanitizedHandle.replace(/:/g, '.');
       // Strip email-style @domain (e.g. "user@bsky.social" → "user.bsky.social")
       sanitizedHandle = sanitizedHandle.replace(/@/, '.');
       // If no dots, assume .bsky.social
@@ -335,7 +337,7 @@ export function createAuthorizeRouter(
       let userMessage = 'Authentication failed. Please try again.';
       const errMsg = error instanceof Error ? error.message : '';
       if (errMsg.includes('resolve identity') || errMsg.includes('Invalid handle')) {
-        userMessage = 'Could not find that Bluesky handle. Enter your full handle (e.g. yourname.bsky.social).';
+        userMessage = 'Could not find that handle. Enter your full handle (e.g. yourname.bsky.social or your.custom.domain).';
       }
       const isJsonRequest = req.is('json');
       if (isJsonRequest) {
