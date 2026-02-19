@@ -136,9 +136,17 @@ export function createAuthRoutes(
       throw httpError.badRequest('invalid_state', 'OAuth state not found or expired');
     }
 
+    // Check if this state belongs to an OIDC client — if so, forward to the
+    // OIDC callback handler at /oauth/callback (don't delete state, OIDC handler needs it)
+    const appCheck = db.getApp(savedState.app_id);
+    if (appCheck && (appCheck as any).client_type === 'oidc') {
+      const qs = req.url.includes('?') ? '?' + req.url.split('?')[1] : '';
+      return res.redirect(`/oauth/callback${qs}`);
+    }
+
     db.deleteOAuthState(state);
 
-    const app = db.getApp(savedState.app_id);
+    const app = appCheck;
     if (!app) {
       throw httpError.notFound('app_not_found', 'Application configuration not found');
     }
