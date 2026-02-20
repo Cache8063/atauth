@@ -19,7 +19,7 @@ export function createAuthorizeRouter(
 ): Router {
   const router = Router();
 
-  function renderLoginPage(clientName: string, authCode: string, state: string, errorMessage?: string): string {
+  function renderLoginPage(clientName: string, authCode: string, state: string, errorMessage?: string, nonce?: string): string {
     const errorHtml = errorMessage
       ? `<div class="error" style="display:block">${errorMessage}</div>`
       : '<div class="error" id="error"></div>';
@@ -96,6 +96,8 @@ export function createAuthorizeRouter(
       display: none;
     }
     .logo { text-align: center; margin-bottom: 24px; font-size: 32px; }
+    .privacy { font-size: 12px; color: #888; margin-top: 20px; line-height: 1.5; text-align: center; }
+    .privacy strong { color: #555; }
   </style>
 </head>
 <body>
@@ -113,8 +115,9 @@ export function createAuthorizeRouter(
       <p class="hint">Enter your Bluesky handle or custom domain</p>
       <button type="submit" id="submitBtn">Continue</button>
     </form>
+    <p class="privacy">Bluesky will ask to authorize broad access — this is a limitation of the AT&nbsp;Protocol OAuth standard. <strong>${clientName}</strong> only reads your identity (handle). It will never post, follow, or access your data.</p>
   </div>
-  <script>
+  <script${nonce ? ` nonce="${nonce}"` : ''}>
     var form = document.getElementById('loginForm');
     var submitBtn = document.getElementById('submitBtn');
     var errorDiv = document.getElementById('error');
@@ -264,7 +267,7 @@ export function createAuthorizeRouter(
       });
 
       // Show login page asking for handle
-      res.type('html').send(renderLoginPage(client.name || client_id, authCode, state || ''));
+      res.type('html').send(renderLoginPage(client.name || client_id, authCode, state || '', undefined, res.locals.cspNonce));
     } catch (error) {
       console.error('[OIDC Authorize] Error:', error);
       res.status(500).json({
@@ -370,7 +373,7 @@ export function createAuthorizeRouter(
         const errAuthData = errAuthCode ? db.getAuthorizationCode(errAuthCode) : null;
         const errClient = errAuthData ? db.getApp(errAuthData.client_id) : null;
         const errClientName = errClient?.name || errAuthData?.client_id || 'Unknown';
-        res.status(400).type('html').send(renderLoginPage(errClientName, errAuthCode || '', errAuthData?.state || '', userMessage));
+        res.status(400).type('html').send(renderLoginPage(errClientName, errAuthCode || '', errAuthData?.state || '', userMessage, res.locals.cspNonce));
       }
     }
   });

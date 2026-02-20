@@ -41,3 +41,8 @@ data:
   EMAIL_PROVIDER: "smtp"
   EMAIL_FROM: "ATAuth <noreply@example.com>"
   EMAIL_CODE_EXPIRY: "900"
+
+  # Forward-auth proxy configuration
+  FORWARD_AUTH_ENABLED: "true"
+  FORWARD_AUTH_SESSION_TTL: "604800"
+  FORWARD_AUTH_PROXY_COOKIE_TTL: "86400"
