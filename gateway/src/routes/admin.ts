@@ -540,6 +540,86 @@ export function createAdminRoutes(
     });
   });
 
+  // ===== Forward-Auth Proxy Management =====
+
+  /**
+   * GET /admin/proxy/origins
+   * List allowed origins for forward-auth
+   */
+  router.get('/proxy/origins', requireAdmin, async (_req: Request, res: Response) => {
+    const origins = db.listProxyAllowedOrigins();
+    res.json({ origins });
+  });
+
+  /**
+   * POST /admin/proxy/origins
+   * Add an allowed origin for forward-auth
+   *
+   * Body:
+   * - origin: Full origin URL (e.g. "https://search.arcnode.xyz")
+   * - name: Display name (e.g. "SearXNG")
+   */
+  router.post('/proxy/origins', requireAdmin, async (req: Request, res: Response) => {
+    const { origin, name } = req.body;
+
+    if (!origin || !name) {
+      throw httpError.badRequest('missing_params', 'origin and name are required');
+    }
+
+    // Validate origin format
+    try {
+      const parsed = new URL(origin);
+      if (parsed.origin !== origin) {
+        throw httpError.badRequest('invalid_origin', 'origin must be a valid URL origin (scheme://host[:port])');
+      }
+    } catch (e) {
+      if (e instanceof Error && 'statusCode' in e) throw e;
+      throw httpError.badRequest('invalid_origin', 'origin must be a valid URL');
+    }
+
+    try {
+      const created = db.addProxyAllowedOrigin(origin, name);
+      res.status(201).json(created);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg.includes('UNIQUE constraint')) {
+        throw httpError.conflict('origin_exists', `Origin '${origin}' already exists`);
+      }
+      throw e;
+    }
+  });
+
+  /**
+   * DELETE /admin/proxy/origins/:id
+   * Remove an allowed origin
+   */
+  router.delete('/proxy/origins/:id', requireAdmin, async (req: Request, res: Response) => {
+    db.removeProxyAllowedOrigin(parseInt(req.params.id, 10));
+    res.json({ message: 'Origin removed' });
+  });
+
+  /**
+   * GET /admin/proxy/sessions
+   * List active proxy sessions
+   */
+  router.get('/proxy/sessions', requireAdmin, async (req: Request, res: Response) => {
+    const { did, limit } = req.query;
+    const sessions = db.getAllProxySessions(
+      did as string | undefined,
+      limit ? parseInt(limit as string, 10) : 100,
+    );
+    res.json({ sessions });
+  });
+
+  /**
+   * DELETE /admin/proxy/sessions/:id
+   * Revoke a proxy session
+   */
+  router.delete('/proxy/sessions/:id', requireAdmin, async (req: Request, res: Response) => {
+    db.deleteProxySession(req.params.id);
+    res.json({ message: 'Proxy session revoked' });
+  });
+
   // ===== Stats =====
 
   /**

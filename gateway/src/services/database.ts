@@ -23,6 +23,9 @@ import type {
   MFABackupCode,
   UserEmail,
   EmailVerificationCode,
+  ProxySession,
+  ProxyAllowedOrigin,
+  ProxyAuthRequest,
 } from '../types/index.js';
 
 export class DatabaseService {
@@ -258,6 +261,36 @@ export class DatabaseService {
 
       CREATE INDEX IF NOT EXISTS idx_verify_email ON email_verification_codes(email);
       CREATE INDEX IF NOT EXISTS idx_verify_expires ON email_verification_codes(expires_at);
+    `);
+
+    // Forward-auth proxy tables
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS proxy_sessions (
+        id TEXT PRIMARY KEY,
+        did TEXT NOT NULL,
+        handle TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        last_activity INTEGER NOT NULL,
+        user_agent TEXT,
+        ip_address TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_proxy_sessions_expires ON proxy_sessions(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_proxy_sessions_did ON proxy_sessions(did);
+
+      CREATE TABLE IF NOT EXISTS proxy_allowed_origins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        origin TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        created_at INTEGER DEFAULT (unixepoch())
+      );
+
+      CREATE TABLE IF NOT EXISTS proxy_auth_requests (
+        id TEXT PRIMARY KEY,
+        redirect_uri TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      );
     `);
   }
 
@@ -1277,6 +1310,124 @@ export class DatabaseService {
 
     const stmt = this.db.prepare(sql);
     const result = stmt.run(...params);
+    return result.changes;
+  }
+
+  // ===== Forward-Auth Proxy Session Methods =====
+
+  createProxySession(session: ProxySession): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO proxy_sessions (id, did, handle, created_at, expires_at, last_activity, user_agent, ip_address)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      session.id, session.did, session.handle,
+      session.created_at, session.expires_at, session.last_activity,
+      session.user_agent, session.ip_address,
+    );
+  }
+
+  getProxySession(id: string): ProxySession | null {
+    const stmt = this.db.prepare('SELECT * FROM proxy_sessions WHERE id = ?');
+    const row = stmt.get(id) as ProxySession | undefined;
+    return row || null;
+  }
+
+  updateProxySessionActivity(id: string): void {
+    const now = Math.floor(Date.now() / 1000);
+    const stmt = this.db.prepare('UPDATE proxy_sessions SET last_activity = ? WHERE id = ?');
+    stmt.run(now, id);
+  }
+
+  deleteProxySession(id: string): void {
+    const stmt = this.db.prepare('DELETE FROM proxy_sessions WHERE id = ?');
+    stmt.run(id);
+  }
+
+  deleteProxySessionsForUser(did: string): number {
+    const stmt = this.db.prepare('DELETE FROM proxy_sessions WHERE did = ?');
+    const result = stmt.run(did);
+    return result.changes;
+  }
+
+  cleanupExpiredProxySessions(): number {
+    const now = Math.floor(Date.now() / 1000);
+    const stmt = this.db.prepare('DELETE FROM proxy_sessions WHERE expires_at < ?');
+    const result = stmt.run(now);
+    return result.changes;
+  }
+
+  getAllProxySessions(did?: string, limit = 100): ProxySession[] {
+    let sql = 'SELECT * FROM proxy_sessions WHERE expires_at > ?';
+    const now = Math.floor(Date.now() / 1000);
+    const params: unknown[] = [now];
+
+    if (did) {
+      sql += ' AND did = ?';
+      params.push(did);
+    }
+
+    sql += ' ORDER BY last_activity DESC LIMIT ?';
+    params.push(limit);
+
+    const stmt = this.db.prepare(sql);
+    return stmt.all(...params) as ProxySession[];
+  }
+
+  // ===== Forward-Auth Allowed Origins Methods =====
+
+  addProxyAllowedOrigin(origin: string, name: string): ProxyAllowedOrigin {
+    const stmt = this.db.prepare(`
+      INSERT INTO proxy_allowed_origins (origin, name) VALUES (?, ?)
+    `);
+    const result = stmt.run(origin, name);
+    return {
+      id: result.lastInsertRowid as number,
+      origin,
+      name,
+      created_at: Math.floor(Date.now() / 1000),
+    };
+  }
+
+  removeProxyAllowedOrigin(id: number): void {
+    const stmt = this.db.prepare('DELETE FROM proxy_allowed_origins WHERE id = ?');
+    stmt.run(id);
+  }
+
+  listProxyAllowedOrigins(): ProxyAllowedOrigin[] {
+    const stmt = this.db.prepare('SELECT * FROM proxy_allowed_origins ORDER BY name ASC');
+    return stmt.all() as ProxyAllowedOrigin[];
+  }
+
+  isProxyOriginAllowed(origin: string): boolean {
+    const stmt = this.db.prepare('SELECT 1 FROM proxy_allowed_origins WHERE origin = ? LIMIT 1');
+    return !!stmt.get(origin);
+  }
+
+  // ===== Forward-Auth Auth Request Methods =====
+
+  saveProxyAuthRequest(request: ProxyAuthRequest): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO proxy_auth_requests (id, redirect_uri, created_at, expires_at) VALUES (?, ?, ?, ?)
+    `);
+    stmt.run(request.id, request.redirect_uri, request.created_at, request.expires_at);
+  }
+
+  getProxyAuthRequest(id: string): ProxyAuthRequest | null {
+    const stmt = this.db.prepare('SELECT * FROM proxy_auth_requests WHERE id = ?');
+    const row = stmt.get(id) as ProxyAuthRequest | undefined;
+    return row || null;
+  }
+
+  deleteProxyAuthRequest(id: string): void {
+    const stmt = this.db.prepare('DELETE FROM proxy_auth_requests WHERE id = ?');
+    stmt.run(id);
+  }
+
+  cleanupExpiredProxyAuthRequests(): number {
+    const now = Math.floor(Date.now() / 1000);
+    const stmt = this.db.prepare('DELETE FROM proxy_auth_requests WHERE expires_at < ?');
+    const result = stmt.run(now);
     return result.changes;
   }
 }

@@ -11,6 +11,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 
 import { DatabaseService } from './services/database.js';
 import { OAuthService } from './services/oauth.js';
@@ -26,7 +27,8 @@ import { createOIDCRouter } from './routes/oidc/index.js';
 import { createPasskeyRouter } from './routes/passkey.js';
 import { createMFARouter } from './routes/mfa.js';
 import { createEmailRouter } from './routes/email.js';
-import { authRateLimit, apiRateLimit, adminRateLimit } from './middleware/rateLimit.js';
+import { createProxyAuthRoutes } from './routes/proxy-auth.js';
+import { authRateLimit, apiRateLimit, adminRateLimit, proxyVerifyRateLimit } from './middleware/rateLimit.js';
 import { HttpError } from './utils/errors.js';
 
 // Configuration from environment
@@ -86,6 +88,14 @@ const config = {
     },
     apiKey: process.env.EMAIL_API_KEY,
     codeExpiry: parseInt(process.env.EMAIL_CODE_EXPIRY || '900', 10), // 15 minutes
+  },
+
+  // Forward-auth proxy configuration
+  forwardAuth: {
+    enabled: process.env.FORWARD_AUTH_ENABLED === 'true',
+    sessionSecret: process.env.FORWARD_AUTH_SESSION_SECRET || 'change-me-in-production-32-bytes!',
+    sessionTtl: parseInt(process.env.FORWARD_AUTH_SESSION_TTL || '604800', 10), // 7 days
+    proxyCookieTtl: parseInt(process.env.FORWARD_AUTH_PROXY_COOKIE_TTL || '86400', 10), // 24h
   },
 };
 
@@ -164,6 +174,11 @@ async function main(): Promise<void> {
   const app = express();
 
   // Middleware
+  // Generate a per-request nonce for inline scripts (CSP script-src)
+  app.use((_req, res, next) => {
+    res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+    next();
+  });
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     contentSecurityPolicy: {
@@ -173,6 +188,8 @@ async function main(): Promise<void> {
         // The OIDC login form POSTs to self, but the response redirects to bsky.social
         // or other PDS hosts. Without this, Chrome blocks the redirect silently.
         'form-action': null,
+        // Allow inline scripts with per-request nonce (for login page)
+        'script-src': ["'self'", (_req: any, res: any) => `'nonce-${res.locals.cspNonce}'`],
       },
     },
   }));
@@ -232,6 +249,15 @@ async function main(): Promise<void> {
     console.log('Email routes enabled');
   }
 
+  // Forward-auth proxy routes (if enabled)
+  if (config.forwardAuth.enabled) {
+    // /auth/verify needs high throughput rate limit (called per-request by nginx)
+    // Other proxy routes use standard auth rate limit
+    const proxyRouter = createProxyAuthRoutes(db, oauth, config.forwardAuth, config.oidc.issuer);
+    app.use('/auth', proxyVerifyRateLimit, proxyRouter);
+    console.log('Forward-auth proxy enabled');
+  }
+
   // Admin UI static files (if available)
   const adminUiPath = path.join(process.cwd(), 'public', 'admin');
   if (fs.existsSync(adminUiPath)) {
@@ -250,6 +276,10 @@ async function main(): Promise<void> {
     // Add OIDC callback if OIDC is enabled
     if (config.oidc.enabled && config.oidc.issuer) {
       redirectUris.push(`${config.oidc.issuer}/oauth/callback`);
+    }
+    // Add forward-auth proxy callback if enabled
+    if (config.forwardAuth.enabled && config.oidc.issuer) {
+      redirectUris.push(`${config.oidc.issuer}/auth/proxy/callback`);
     }
 
     res.json({
@@ -301,10 +331,12 @@ async function main(): Promise<void> {
     const authCodesDeleted = db.cleanupExpiredAuthorizationCodes();
     const refreshTokensDeleted = db.cleanupExpiredRefreshTokens();
     const emailCodesDeleted = db.cleanupExpiredEmailVerificationCodes();
+    const proxySessionsDeleted = db.cleanupExpiredProxySessions();
+    const proxyAuthRequestsDeleted = db.cleanupExpiredProxyAuthRequests();
 
-    const total = statesDeleted + sessionsDeleted + authCodesDeleted + refreshTokensDeleted + emailCodesDeleted;
+    const total = statesDeleted + sessionsDeleted + authCodesDeleted + refreshTokensDeleted + emailCodesDeleted + proxySessionsDeleted + proxyAuthRequestsDeleted;
     if (total > 0) {
-      console.log(`Cleanup: ${statesDeleted} OAuth states, ${sessionsDeleted} sessions, ${authCodesDeleted} auth codes, ${refreshTokensDeleted} refresh tokens, ${emailCodesDeleted} email codes`);
+      console.log(`Cleanup: ${statesDeleted} OAuth states, ${sessionsDeleted} sessions, ${authCodesDeleted} auth codes, ${refreshTokensDeleted} refresh tokens, ${emailCodesDeleted} email codes, ${proxySessionsDeleted} proxy sessions, ${proxyAuthRequestsDeleted} proxy auth requests`);
     }
   }, 60 * 60 * 1000);
 
@@ -338,6 +370,11 @@ async function main(): Promise<void> {
       console.log(`Email enabled - Provider: ${config.email.provider}`);
     } else {
       console.log('Email disabled (set EMAIL_ENABLED=true to enable)');
+    }
+    if (config.forwardAuth.enabled) {
+      console.log(`Forward-auth proxy enabled - Session TTL: ${config.forwardAuth.sessionTtl}s`);
+    } else {
+      console.log('Forward-auth proxy disabled (set FORWARD_AUTH_ENABLED=true to enable)');
     }
   });
 }

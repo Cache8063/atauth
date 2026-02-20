@@ -179,3 +179,12 @@ export const adminRateLimit = rateLimit({
   windowMs: 60 * 1000,   // 1 minute
   maxRequests: 20,       // 20 requests per minute
 });
+
+/**
+ * High-throughput rate limit for forward-auth verify endpoint.
+ * Called by nginx on every request to a protected service.
+ */
+export const proxyVerifyRateLimit = rateLimit({
+  windowMs: 60 * 1000,   // 1 minute
+  maxRequests: 300,      // 300 requests per minute per IP
+});

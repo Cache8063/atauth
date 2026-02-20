@@ -9,6 +9,7 @@ export * from './oidc.js';
 export * from './passkey.js';
 export * from './mfa.js';
 export * from './email.js';
+export * from './proxy.js';
 
 export interface GatewayTokenPayload {
   /** AT Protocol DID (e.g., "did:plc:xyz...") */
