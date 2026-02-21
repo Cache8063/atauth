@@ -292,6 +292,15 @@ export class DatabaseService {
         expires_at INTEGER NOT NULL
       );
     `);
+
+    // Ensure sentinel proxy-auth app exists for forward-auth OAuth flows
+    const proxyApp = this.db.prepare('SELECT 1 FROM apps WHERE id = ?').get('proxy-auth');
+    if (!proxyApp) {
+      this.db.prepare(
+        `INSERT INTO apps (id, name, hmac_secret, callback_url, client_type)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run('proxy-auth', 'Forward-Auth Proxy', 'internal-not-used', '', 'internal');
+    }
   }
 
   // App configuration methods
