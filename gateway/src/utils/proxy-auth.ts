@@ -12,16 +12,17 @@ const ALGORITHM = 'sha256';
 
 export const SESSION_COOKIE_NAME = '_atauth_session';
 export const PROXY_COOKIE_NAME = '_atauth_proxy';
+export const ADMIN_COOKIE_NAME = '_atauth_admin';
 
 // ===== Cookie Utilities =====
 
 /**
- * Create an HMAC-signed session cookie value.
- * Payload contains only the session ID (small, opaque).
+ * Create an HMAC-signed session cookie value (for ATAuth domain).
+ * Includes typ:'session' to prevent cookie confusion with proxy cookies.
  */
 export function createSessionCookie(sessionId: string, secret: string, ttlSeconds: number): string {
   const now = Math.floor(Date.now() / 1000);
-  const payload: ProxySessionCookiePayload = { sid: sessionId, iat: now, exp: now + ttlSeconds };
+  const payload: ProxySessionCookiePayload = { typ: 'session', sid: sessionId, iat: now, exp: now + ttlSeconds };
   const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signature = crypto.createHmac(ALGORITHM, secret).update(payloadBase64).digest('base64url');
   return `${payloadBase64}.${signature}`;
@@ -29,28 +30,59 @@ export function createSessionCookie(sessionId: string, secret: string, ttlSecond
 
 /**
  * Verify an HMAC-signed session cookie.
- * Returns the session ID if valid, null otherwise.
+ * Rejects cookies with wrong type to prevent cookie confusion attacks.
  */
 export function verifySessionCookie(cookie: string, secret: string): string | null {
   const payload = verifyHmacToken<ProxySessionCookiePayload>(cookie, secret);
-  return payload?.sid ?? null;
+  if (!payload || payload.typ !== 'session') return null;
+  return payload.sid;
 }
 
 // ===== Proxy Cookie Utilities =====
 
 /**
  * Create an HMAC-signed proxy cookie (set on the protected service domain).
- * Same format as session cookie but with independent TTL.
+ * Includes typ:'proxy' to prevent cookie confusion with session cookies.
  */
 export function createProxyCookie(sessionId: string, secret: string, ttlSeconds: number): string {
-  return createSessionCookie(sessionId, secret, ttlSeconds);
+  const now = Math.floor(Date.now() / 1000);
+  const payload: ProxySessionCookiePayload = { typ: 'proxy', sid: sessionId, iat: now, exp: now + ttlSeconds };
+  const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac(ALGORITHM, secret).update(payloadBase64).digest('base64url');
+  return `${payloadBase64}.${signature}`;
 }
 
 /**
  * Verify an HMAC-signed proxy cookie.
+ * Rejects cookies with wrong type to prevent cookie confusion attacks.
  */
 export function verifyProxyCookie(cookie: string, secret: string): string | null {
-  return verifySessionCookie(cookie, secret);
+  const payload = verifyHmacToken<ProxySessionCookiePayload>(cookie, secret);
+  if (!payload || payload.typ !== 'proxy') return null;
+  return payload.sid;
+}
+
+// ===== Admin Cookie Utilities =====
+
+/**
+ * Create an HMAC-signed admin session cookie (24h TTL).
+ * Proves the bearer successfully authenticated with the admin token.
+ */
+export function createAdminCookie(secret: string, ttlSeconds: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const payload: ProxySessionCookiePayload = { typ: 'admin', sid: 'admin', iat: now, exp: now + ttlSeconds };
+  const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac(ALGORITHM, secret).update(payloadBase64).digest('base64url');
+  return `${payloadBase64}.${signature}`;
+}
+
+/**
+ * Verify an HMAC-signed admin session cookie.
+ * Returns true if valid, false otherwise.
+ */
+export function verifyAdminCookie(cookie: string, secret: string): boolean {
+  const payload = verifyHmacToken<ProxySessionCookiePayload>(cookie, secret);
+  return payload !== null && payload.typ === 'admin';
 }
 
 // ===== Auth Ticket Utilities =====

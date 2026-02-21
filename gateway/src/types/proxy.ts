@@ -33,8 +33,27 @@ export interface ProxyAuthRequest {
   expires_at: number;
 }
 
+/** An access control rule for forward-auth proxy */
+export interface ProxyAccessRule {
+  id: number;
+  origin_id: number | null;  // null = global rule
+  rule_type: 'allow' | 'deny';
+  subject_type: 'did' | 'handle_pattern';
+  subject_value: string;
+  description: string | null;
+  created_at: number;
+}
+
+/** Result of an access check */
+export interface AccessCheckResult {
+  allowed: boolean;
+  matched_rule_id: number | null;
+  reason: string;  // for logging/admin, NOT for user display
+}
+
 /** Payload inside the _atauth_session cookie (on ATAuth domain) */
 export interface ProxySessionCookiePayload {
+  typ: 'session' | 'proxy' | 'admin';
   sid: string;
   iat: number;
   exp: number;

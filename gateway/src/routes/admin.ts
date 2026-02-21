@@ -11,6 +11,9 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { DatabaseService } from '../services/database.js';
 import { generateHmacSecret } from '../utils/hmac.js';
 import { httpError } from '../utils/errors.js';
+import { checkAccess } from '../utils/access-check.js';
+import { parseCookies, ADMIN_COOKIE_NAME, createAdminCookie, verifyAdminCookie } from '../utils/proxy-auth.js';
+import { createAdminDashboardRoutes } from './admin-dashboard.js';
 import type { OIDCService } from '../services/oidc/index.js';
 import type { PasskeyService } from '../services/passkey.js';
 import type { MFAService } from '../services/mfa.js';
@@ -34,27 +37,103 @@ export function createAdminRoutes(
   adminToken?: string,
   oidcService?: OIDCService | null,
   passkeyService?: PasskeyService | null,
-  mfaService?: MFAService | null
+  mfaService?: MFAService | null,
+  sessionSecret?: string,
 ): Router {
   const router = Router();
 
-  const requireAdmin = (req: Request, _res: Response, next: NextFunction) => {
+  const ADMIN_COOKIE_TTL = 86400; // 24 hours
+
+  /**
+   * Admin authentication middleware.
+   * Accepts EITHER a Bearer token in the Authorization header
+   * OR a valid _atauth_admin cookie (for dashboard sessions).
+   */
+  const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
     if (!adminToken) {
       throw httpError.forbidden('admin_disabled', 'Admin endpoints are disabled (set ADMIN_TOKEN)');
     }
 
+    // Check Bearer token first
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw httpError.unauthorized('missing_auth', 'Authorization header required');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      if (!secureCompare(token, adminToken)) {
+        throw httpError.forbidden('invalid_token', 'Invalid admin token');
+      }
+      return next();
     }
 
-    const token = authHeader.substring(7);
-    if (!secureCompare(token, adminToken)) {
-      throw httpError.forbidden('invalid_token', 'Invalid admin token');
+    // Check admin cookie
+    if (sessionSecret) {
+      const cookies = parseCookies(req.headers.cookie);
+      const adminCookieValue = cookies[ADMIN_COOKIE_NAME];
+      if (adminCookieValue && verifyAdminCookie(adminCookieValue, sessionSecret)) {
+        return next();
+      }
     }
 
-    next();
+    // If this looks like a browser request (Accept: text/html), redirect to login
+    if (req.accepts('html') && !req.accepts('json')) {
+      return res.redirect('/admin/login');
+    }
+
+    throw httpError.unauthorized('missing_auth', 'Authorization required');
   };
+
+  // ===== Admin Login/Logout (no auth required) =====
+
+  /**
+   * GET /admin/login
+   * Render the admin login page.
+   */
+  router.get('/login', (_req: Request, res: Response) => {
+    if (!adminToken) {
+      return res.status(403).send('Admin endpoints are disabled');
+    }
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(renderLoginPage());
+  });
+
+  /**
+   * POST /admin/login
+   * Validate admin token and set session cookie.
+   */
+  router.post('/login', (req: Request, res: Response) => {
+    if (!adminToken) {
+      throw httpError.forbidden('admin_disabled', 'Admin endpoints are disabled');
+    }
+
+    const { token } = req.body;
+    if (!token || !secureCompare(token, adminToken)) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(401).send(renderLoginPage('Invalid admin token'));
+    }
+
+    if (!sessionSecret) {
+      throw httpError.internalServerError('config_error', 'Session secret not configured');
+    }
+
+    const cookieValue = createAdminCookie(sessionSecret, ADMIN_COOKIE_TTL);
+    res.setHeader('Set-Cookie', `${ADMIN_COOKIE_NAME}=${cookieValue}; Path=/admin; HttpOnly; Secure; SameSite=Strict; Max-Age=${ADMIN_COOKIE_TTL}`);
+    res.redirect('/admin/dashboard');
+  });
+
+  /**
+   * GET /admin/logout
+   * Clear admin session cookie and redirect to login.
+   */
+  router.get('/logout', (_req: Request, res: Response) => {
+    res.setHeader('Set-Cookie', `${ADMIN_COOKIE_NAME}=; Path=/admin; HttpOnly; Secure; SameSite=Strict; Max-Age=0`);
+    res.redirect('/admin/login');
+  });
+
+  // ===== Dashboard (server-rendered HTML) =====
+  if (sessionSecret) {
+    const dashboardRouter = createAdminDashboardRoutes(db, sessionSecret);
+    router.use('/dashboard', requireAdmin, dashboardRouter);
+  }
 
   /**
    * POST /admin/apps
@@ -620,6 +699,114 @@ export function createAdminRoutes(
     res.json({ message: 'Proxy session revoked' });
   });
 
+  // ===== Forward-Auth Access Rules =====
+
+  /**
+   * GET /admin/proxy/access
+   * List access rules. Optional ?origin_id=N filter.
+   */
+  router.get('/proxy/access', requireAdmin, async (req: Request, res: Response) => {
+    const originIdParam = req.query.origin_id;
+    let rules;
+    if (originIdParam !== undefined) {
+      const originId = parseInt(originIdParam as string, 10);
+      rules = db.listProxyAccessRules(originId);
+    } else {
+      rules = db.listProxyAccessRules();
+    }
+    res.json({ rules });
+  });
+
+  /**
+   * POST /admin/proxy/access
+   * Create an access rule.
+   *
+   * Body:
+   * - origin_id: number | null (null = global rule)
+   * - rule_type: "allow" | "deny"
+   * - subject_type: "did" | "handle_pattern"
+   * - subject_value: string (DID or pattern like "*.arcnode.xyz")
+   * - description: string (optional label)
+   */
+  router.post('/proxy/access', requireAdmin, async (req: Request, res: Response) => {
+    const { origin_id, rule_type, subject_type, subject_value, description } = req.body;
+
+    if (!rule_type || !subject_type || !subject_value) {
+      throw httpError.badRequest('missing_params', 'rule_type, subject_type, and subject_value are required');
+    }
+
+    if (!['allow', 'deny'].includes(rule_type)) {
+      throw httpError.badRequest('invalid_rule_type', 'rule_type must be "allow" or "deny"');
+    }
+
+    if (!['did', 'handle_pattern'].includes(subject_type)) {
+      throw httpError.badRequest('invalid_subject_type', 'subject_type must be "did" or "handle_pattern"');
+    }
+
+    if (subject_type === 'did' && !subject_value.startsWith('did:')) {
+      throw httpError.badRequest('invalid_did', 'DID must start with "did:"');
+    }
+
+    if (subject_type === 'handle_pattern') {
+      if (subject_value !== '*' && !subject_value.match(/^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/)) {
+        throw httpError.badRequest('invalid_pattern', 'Handle pattern must be "*", "*.domain", or an exact handle');
+      }
+    }
+
+    if (origin_id !== null && origin_id !== undefined) {
+      const origins = db.listProxyAllowedOrigins();
+      if (!origins.some(o => o.id === origin_id)) {
+        throw httpError.notFound('origin_not_found', `Origin with id ${origin_id} not found`);
+      }
+    }
+
+    const rule = db.createProxyAccessRule({
+      origin_id: origin_id ?? null,
+      rule_type,
+      subject_type,
+      subject_value,
+      description: description || null,
+    });
+
+    res.status(201).json(rule);
+  });
+
+  /**
+   * DELETE /admin/proxy/access/:id
+   * Delete an access rule.
+   */
+  router.delete('/proxy/access/:id', requireAdmin, async (req: Request, res: Response) => {
+    db.deleteProxyAccessRule(parseInt(req.params.id, 10));
+    res.json({ message: 'Access rule deleted' });
+  });
+
+  /**
+   * POST /admin/proxy/access/check
+   * Test if a DID/handle would be allowed for an origin.
+   * Admin debugging tool -- does not modify state.
+   */
+  router.post('/proxy/access/check', requireAdmin, async (req: Request, res: Response) => {
+    const { did, handle, origin_id } = req.body;
+
+    if (!did || !handle || origin_id === undefined) {
+      throw httpError.badRequest('missing_params', 'did, handle, and origin_id are required');
+    }
+
+    const rules = db.getProxyAccessRulesForCheck(origin_id);
+    const totalRules = rules.denyRules.length + rules.originAllowRules.length + rules.globalAllowRules.length;
+
+    if (totalRules === 0) {
+      return res.json({
+        allowed: true,
+        matched_rule_id: null,
+        reason: 'No access rules configured (open access)',
+      });
+    }
+
+    const result = checkAccess(did, handle, rules);
+    res.json(result);
+  });
+
   // ===== Stats =====
 
   /**
@@ -632,4 +819,109 @@ export function createAdminRoutes(
   });
 
   return router;
+}
+
+// ===== Admin Login Page Template =====
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderLoginPage(error?: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATAuth Admin Login</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #e2e8f0;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: #f1f5f9;
+    }
+    .subtitle {
+      color: #94a3b8;
+      font-size: 0.875rem;
+      margin-bottom: 1.5rem;
+    }
+    .error {
+      background: #451a22;
+      border: 1px solid #7f1d2f;
+      color: #fca5a5;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #94a3b8;
+      margin-bottom: 0.5rem;
+    }
+    input[type="password"] {
+      width: 100%;
+      padding: 0.625rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="password"]:focus {
+      border-color: #3b82f6;
+    }
+    button {
+      width: 100%;
+      margin-top: 1rem;
+      padding: 0.625rem;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #2563eb; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>ATAuth Admin</h1>
+    <p class="subtitle">Enter your admin token to continue</p>
+    ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
+    <form method="POST" action="/admin/login">
+      <label for="token">Admin Token</label>
+      <input type="password" id="token" name="token" required autocomplete="current-password" autofocus>
+      <button type="submit">Sign In</button>
+    </form>
+  </div>
+</body>
+</html>`;
 }

@@ -35,12 +35,16 @@ export class OAuthService {
   }
 
   async initialize(): Promise<void> {
+    // Derive proxy callback from the primary redirect URI's base
+    const baseUrl = this.redirectUri.replace(/\/[^/]*$/, '');
+    const proxyCallbackUri = `${baseUrl}/proxy/callback`;
+
     this.client = new NodeOAuthClient({
       clientMetadata: {
         client_id: this.clientId,
         client_name: 'ATAuth Gateway',
         client_uri: this.clientId,
-        redirect_uris: [this.redirectUri],
+        redirect_uris: [this.redirectUri, proxyCallbackUri],
         grant_types: ['authorization_code', 'refresh_token'],
         response_types: ['code'],
         scope: 'atproto transition:generic',
@@ -95,9 +99,14 @@ export class OAuthService {
 
     pendingStateKey = null;
 
-    const url = await this.client.authorize(handle, {
+    const authorizeOptions: Record<string, string> = {
       scope: 'atproto transition:generic',
-    });
+    };
+    if (customRedirect) {
+      authorizeOptions.redirect_uri = customRedirect;
+    }
+
+    const url = await this.client.authorize(handle, authorizeOptions);
 
     const state = pendingStateKey;
     if (!state) {
@@ -120,13 +129,21 @@ export class OAuthService {
 
   /**
    * Handle OAuth callback and exchange code for tokens
+   *
+   * @param params - URL search params from the callback
+   * @param redirectUri - The redirect_uri used during authorization (must match)
    */
-  async handleCallback(params: URLSearchParams): Promise<OAuthResult> {
+  async handleCallback(params: URLSearchParams, redirectUri?: string): Promise<OAuthResult> {
     if (!this.client) {
       throw new Error('OAuth client not initialized');
     }
 
-    const { session } = await this.client.callback(params);
+    const callbackOptions: Record<string, string> = {};
+    if (redirectUri) {
+      callbackOptions.redirect_uri = redirectUri;
+    }
+
+    const { session } = await this.client.callback(params, callbackOptions);
 
     const did: string = session.did;
 

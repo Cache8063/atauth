@@ -28,7 +28,7 @@ import { createPasskeyRouter } from './routes/passkey.js';
 import { createMFARouter } from './routes/mfa.js';
 import { createEmailRouter } from './routes/email.js';
 import { createProxyAuthRoutes } from './routes/proxy-auth.js';
-import { authRateLimit, apiRateLimit, adminRateLimit, proxyVerifyRateLimit } from './middleware/rateLimit.js';
+import { authRateLimit, apiRateLimit, adminRateLimit } from './middleware/rateLimit.js';
 import { HttpError } from './utils/errors.js';
 
 // Configuration from environment
@@ -217,10 +217,20 @@ async function main(): Promise<void> {
     });
   });
 
+  // Forward-auth proxy routes MUST be mounted before the general /auth rate limiter.
+  // /auth/verify is called by nginx auth_request on every subrequest from a single
+  // pod IP, so per-IP rate limiting would block legitimate traffic.
+  if (config.forwardAuth.enabled) {
+    const proxyRouter = createProxyAuthRoutes(db, oauth, config.forwardAuth, config.oidc.issuer);
+    // Mount entire proxy router at /auth -- no rate limit on /auth/verify
+    app.use('/auth', proxyRouter);
+    console.log('Forward-auth proxy enabled');
+  }
+
   // Routes with rate limiting
   app.use('/auth', authRateLimit, createAuthRoutes(db, oauth));
   app.use('/token', apiRateLimit, createTokenRoutes(db));
-  app.use('/admin', adminRateLimit, createAdminRoutes(db, config.adminToken, oidcService, passkeyService, mfaService));
+  app.use('/admin', adminRateLimit, createAdminRoutes(db, config.adminToken, oidcService, passkeyService, mfaService, config.forwardAuth.enabled ? config.forwardAuth.sessionSecret : undefined));
   app.use('/session', apiRateLimit, createSessionRoutes(db));
 
   // OIDC routes (if enabled)
@@ -249,25 +259,7 @@ async function main(): Promise<void> {
     console.log('Email routes enabled');
   }
 
-  // Forward-auth proxy routes (if enabled)
-  if (config.forwardAuth.enabled) {
-    // /auth/verify needs high throughput rate limit (called per-request by nginx)
-    // Other proxy routes use standard auth rate limit
-    const proxyRouter = createProxyAuthRoutes(db, oauth, config.forwardAuth, config.oidc.issuer);
-    app.use('/auth', proxyVerifyRateLimit, proxyRouter);
-    console.log('Forward-auth proxy enabled');
-  }
-
-  // Admin UI static files (if available)
-  const adminUiPath = path.join(process.cwd(), 'public', 'admin');
-  if (fs.existsSync(adminUiPath)) {
-    app.use('/admin', express.static(adminUiPath));
-    // SPA fallback for admin routes (path-to-regexp v8 requires named wildcards)
-    app.get('/admin/{*splat}', (_req, res) => {
-      res.sendFile(path.join(adminUiPath, 'index.html'));
-    });
-    console.log('Admin UI enabled at /admin');
-  }
+  // Forward-auth proxy routes were mounted earlier (before /auth rate limiter)
 
   // OAuth client metadata (for AT Protocol discovery)
   app.get('/client-metadata.json', (_req, res) => {
