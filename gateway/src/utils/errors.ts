@@ -37,6 +37,7 @@ export const httpError = {
   forbidden: (code: string, message: string) => new HttpError(403, code, message),
   notFound: (code: string, message: string) => new HttpError(404, code, message),
   conflict: (code: string, message: string) => new HttpError(409, code, message),
+  internalServerError: (code: string, message: string) => new HttpError(500, code, message),
 };
 
 /**

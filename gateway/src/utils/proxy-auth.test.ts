@@ -7,6 +7,8 @@ import {
   verifySessionCookie,
   createProxyCookie,
   verifyProxyCookie,
+  createAdminCookie,
+  verifyAdminCookie,
   createAuthTicket,
   verifyAuthTicket,
   parseCookies,
@@ -14,6 +16,7 @@ import {
   extractOrigin,
   SESSION_COOKIE_NAME,
   PROXY_COOKIE_NAME,
+  ADMIN_COOKIE_NAME,
 } from './proxy-auth.js';
 
 const TEST_SECRET = 'test-secret-for-hmac-signing-32b!';
@@ -57,10 +60,24 @@ describe('Session Cookie', () => {
 });
 
 describe('Proxy Cookie', () => {
-  it('should create and verify (same as session cookie format)', () => {
+  it('should create and verify a proxy cookie', () => {
     const cookie = createProxyCookie('session-456', TEST_SECRET, 86400);
     const result = verifyProxyCookie(cookie, TEST_SECRET);
     expect(result).toBe('session-456');
+  });
+});
+
+describe('Cookie Confusion Prevention', () => {
+  it('should reject a proxy cookie used as a session cookie', () => {
+    const proxyCookie = createProxyCookie('session-123', TEST_SECRET, 3600);
+    const result = verifySessionCookie(proxyCookie, TEST_SECRET);
+    expect(result).toBeNull();
+  });
+
+  it('should reject a session cookie used as a proxy cookie', () => {
+    const sessionCookie = createSessionCookie('session-123', TEST_SECRET, 3600);
+    const result = verifyProxyCookie(sessionCookie, TEST_SECRET);
+    expect(result).toBeNull();
   });
 });
 
@@ -181,9 +198,40 @@ describe('extractOrigin', () => {
   });
 });
 
+describe('Admin Cookie', () => {
+  it('should create and verify an admin cookie', () => {
+    const cookie = createAdminCookie(TEST_SECRET, 86400);
+    expect(verifyAdminCookie(cookie, TEST_SECRET)).toBe(true);
+  });
+
+  it('should reject an expired admin cookie', () => {
+    vi.useFakeTimers();
+    const cookie = createAdminCookie(TEST_SECRET, 60);
+    vi.advanceTimersByTime(61 * 1000);
+    expect(verifyAdminCookie(cookie, TEST_SECRET)).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('should reject admin cookie with wrong secret', () => {
+    const cookie = createAdminCookie(TEST_SECRET, 86400);
+    expect(verifyAdminCookie(cookie, 'wrong-secret')).toBe(false);
+  });
+
+  it('should reject session cookie as admin cookie', () => {
+    const sessionCookie = createSessionCookie('sid', TEST_SECRET, 3600);
+    expect(verifyAdminCookie(sessionCookie, TEST_SECRET)).toBe(false);
+  });
+
+  it('should reject proxy cookie as admin cookie', () => {
+    const proxyCookie = createProxyCookie('sid', TEST_SECRET, 3600);
+    expect(verifyAdminCookie(proxyCookie, TEST_SECRET)).toBe(false);
+  });
+});
+
 describe('Cookie names', () => {
   it('should export expected cookie names', () => {
     expect(SESSION_COOKIE_NAME).toBe('_atauth_session');
     expect(PROXY_COOKIE_NAME).toBe('_atauth_proxy');
+    expect(ADMIN_COOKIE_NAME).toBe('_atauth_admin');
   });
 });

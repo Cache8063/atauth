@@ -18,7 +18,8 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import type { DatabaseService } from '../services/database.js';
 import type { OAuthService } from '../services/oauth.js';
-import type { ForwardAuthConfig } from '../types/proxy.js';
+import type { ForwardAuthConfig, AccessCheckResult } from '../types/proxy.js';
+import { checkAccess } from '../utils/access-check.js';
 import {
   SESSION_COOKIE_NAME,
   PROXY_COOKIE_NAME,
@@ -41,6 +42,34 @@ export function createProxyAuthRoutes(
 ): Router {
   const router = Router();
   const secret = forwardAuthConfig.sessionSecret;
+
+  /**
+   * Check access rules for a user attempting to access a protected origin.
+   * Returns allowed if no rules are configured (backward compat).
+   */
+  function enforceAccess(did: string, handle: string, redirectUri: string): AccessCheckResult {
+    const targetOrigin = extractOrigin(redirectUri);
+    if (!targetOrigin) {
+      return { allowed: false, matched_rule_id: null, reason: 'Invalid redirect URI' };
+    }
+
+    const originId = db.getOriginIdByOrigin(targetOrigin);
+    if (originId === null) {
+      return { allowed: false, matched_rule_id: null, reason: 'Origin not registered' };
+    }
+
+    const rules = db.getProxyAccessRulesForCheck(originId);
+    const totalRules = rules.denyRules.length + rules.originAllowRules.length + rules.globalAllowRules.length;
+    if (totalRules === 0) {
+      return { allowed: true, matched_rule_id: null, reason: 'No access rules configured (open access)' };
+    }
+
+    const result = checkAccess(did, handle, rules);
+    if (!result.allowed) {
+      console.log(`[Proxy ACL] Access denied for ${handle} (${did}) to ${targetOrigin}: ${result.reason}`);
+    }
+    return result;
+  }
 
   // ===== GET /auth/verify =====
   // Called by nginx auth_request on every request to a protected service.
@@ -131,6 +160,12 @@ export function createProxyAuthRoutes(
       if (sessionId) {
         const session = db.getProxySession(sessionId);
         if (session && session.expires_at > Math.floor(Date.now() / 1000)) {
+          // Check access rules before issuing silent SSO ticket
+          const accessResult = enforceAccess(session.did, session.handle, rd);
+          if (!accessResult.allowed) {
+            return res.status(403).type('html').send(renderAccessDeniedPage(res.locals.cspNonce));
+          }
+
           // Silent SSO -- generate ticket and redirect back
           const targetOrigin = extractOrigin(rd);
           if (targetOrigin) {
@@ -283,7 +318,10 @@ export function createProxyAuthRoutes(
       callbackParams.set('state', state);
       if (iss) callbackParams.set('iss', iss);
 
-      const callbackResult = await oauthService.handleCallback(callbackParams);
+      const callbackResult = await oauthService.handleCallback(
+        callbackParams,
+        `${oidcIssuer}/auth/proxy/callback`,
+      );
       if (!callbackResult) {
         return res.status(500).send('Failed to complete authentication');
       }
@@ -296,6 +334,14 @@ export function createProxyAuthRoutes(
       const authRequest = db.getProxyAuthRequest(authRequestId);
       if (!authRequest) {
         return res.status(400).send('Login request expired');
+      }
+
+      // Check access rules before creating session
+      const accessResult = enforceAccess(did, handle, authRequest.redirect_uri);
+      if (!accessResult.allowed) {
+        db.deleteOAuthState(state);
+        db.deleteProxyAuthRequest(authRequestId);
+        return res.status(403).type('html').send(renderAccessDeniedPage(res.locals.cspNonce));
       }
 
       // Create a proxy session
@@ -364,7 +410,12 @@ export function createProxyAuthRoutes(
 
     const rd = req.query.rd as string;
     if (rd) {
-      return res.redirect(rd);
+      // Validate redirect against allowed origins to prevent open redirect
+      const allowedOrigins = db.listProxyAllowedOrigins().map(o => o.origin);
+      if (isAllowedRedirect(rd, allowedOrigins)) {
+        return res.redirect(rd);
+      }
+      // If not allowed, fall through to the logged-out page
     }
 
     res.type('html').send(renderLoggedOutPage(res.locals.cspNonce));
@@ -375,9 +426,21 @@ export function createProxyAuthRoutes(
 
 // ===== HTML Templates =====
 
+/**
+ * Escape HTML special characters to prevent XSS.
+ */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function renderProxyLoginPage(authRequestId: string, nonce?: string, errorMessage?: string): string {
   const errorHtml = errorMessage
-    ? `<div class="error" style="display:block">${errorMessage}</div>`
+    ? `<div class="error" style="display:block">${escapeHtml(errorMessage)}</div>`
     : '<div class="error" id="error"></div>';
   return `
 <!DOCTYPE html>
@@ -394,7 +457,7 @@ function renderProxyLoginPage(authRequestId: string, nonce?: string, errorMessag
     <p class="subtitle">Authenticate with your Bluesky account to access this service</p>
     ${errorHtml}
     <form id="loginForm" action="/auth/proxy/login" method="POST">
-      <input type="hidden" name="auth_request_id" value="${authRequestId}">
+      <input type="hidden" name="auth_request_id" value="${escapeHtml(authRequestId)}">
       <label for="handle">Your Handle</label>
       <input type="text" id="handle" name="handle" placeholder="you.bsky.social" autocomplete="username" autocapitalize="none" spellcheck="false" required>
       <p class="hint">Enter your Bluesky handle or custom domain</p>
@@ -438,6 +501,25 @@ function renderForbiddenPage(nonce?: string): string {
 </html>`;
 }
 
+function renderAccessDeniedPage(nonce?: string): string {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Not Authorized - ATAuth</title>
+  ${sharedStyles()}
+</head>
+<body>
+  <div class="container">
+    <h1>Not Authorized</h1>
+    <p class="subtitle">Your account does not have access to this service. Contact your administrator if you believe this is an error.</p>
+  </div>
+</body>
+</html>`;
+}
+
 function renderErrorPage(title: string, message: string, nonce?: string): string {
   return `
 <!DOCTYPE html>
@@ -445,13 +527,13 @@ function renderErrorPage(title: string, message: string, nonce?: string): string
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - ATAuth</title>
+  <title>${escapeHtml(title)} - ATAuth</title>
   ${sharedStyles()}
 </head>
 <body>
   <div class="container">
-    <h1>${title}</h1>
-    <p class="subtitle">${message}</p>
+    <h1>${escapeHtml(title)}</h1>
+    <p class="subtitle">${escapeHtml(message)}</p>
   </div>
 </body>
 </html>`;

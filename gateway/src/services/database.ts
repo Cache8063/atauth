@@ -26,6 +26,7 @@ import type {
   ProxySession,
   ProxyAllowedOrigin,
   ProxyAuthRequest,
+  ProxyAccessRule,
 } from '../types/index.js';
 
 export class DatabaseService {
@@ -291,6 +292,17 @@ export class DatabaseService {
         created_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS proxy_access_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        origin_id INTEGER,
+        rule_type TEXT NOT NULL CHECK(rule_type IN ('allow', 'deny')),
+        subject_type TEXT NOT NULL CHECK(subject_type IN ('did', 'handle_pattern')),
+        subject_value TEXT NOT NULL,
+        description TEXT,
+        created_at INTEGER DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS idx_proxy_access_rules_origin ON proxy_access_rules(origin_id);
     `);
 
     // Ensure sentinel proxy-auth app exists for forward-auth OAuth flows
@@ -1399,8 +1411,8 @@ export class DatabaseService {
   }
 
   removeProxyAllowedOrigin(id: number): void {
-    const stmt = this.db.prepare('DELETE FROM proxy_allowed_origins WHERE id = ?');
-    stmt.run(id);
+    this.db.prepare('DELETE FROM proxy_access_rules WHERE origin_id = ?').run(id);
+    this.db.prepare('DELETE FROM proxy_allowed_origins WHERE id = ?').run(id);
   }
 
   listProxyAllowedOrigins(): ProxyAllowedOrigin[] {
@@ -1438,5 +1450,77 @@ export class DatabaseService {
     const stmt = this.db.prepare('DELETE FROM proxy_auth_requests WHERE expires_at < ?');
     const result = stmt.run(now);
     return result.changes;
+  }
+
+  // ===== Forward-Auth Access Rules Methods =====
+
+  createProxyAccessRule(rule: Omit<ProxyAccessRule, 'id' | 'created_at'>): ProxyAccessRule {
+    const stmt = this.db.prepare(`
+      INSERT INTO proxy_access_rules (origin_id, rule_type, subject_type, subject_value, description)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      rule.origin_id, rule.rule_type, rule.subject_type,
+      rule.subject_value, rule.description,
+    );
+    return {
+      id: result.lastInsertRowid as number,
+      origin_id: rule.origin_id,
+      rule_type: rule.rule_type,
+      subject_type: rule.subject_type,
+      subject_value: rule.subject_value,
+      description: rule.description,
+      created_at: Math.floor(Date.now() / 1000),
+    };
+  }
+
+  deleteProxyAccessRule(id: number): void {
+    this.db.prepare('DELETE FROM proxy_access_rules WHERE id = ?').run(id);
+  }
+
+  listProxyAccessRules(originId?: number): ProxyAccessRule[] {
+    if (originId !== undefined) {
+      const stmt = this.db.prepare(
+        'SELECT * FROM proxy_access_rules WHERE origin_id = ? OR origin_id IS NULL ORDER BY rule_type ASC, created_at ASC',
+      );
+      return stmt.all(originId) as ProxyAccessRule[];
+    }
+    const stmt = this.db.prepare(
+      'SELECT * FROM proxy_access_rules ORDER BY origin_id ASC, rule_type ASC, created_at ASC',
+    );
+    return stmt.all() as ProxyAccessRule[];
+  }
+
+  getProxyAccessRulesForCheck(originId: number): {
+    denyRules: ProxyAccessRule[];
+    originAllowRules: ProxyAccessRule[];
+    globalAllowRules: ProxyAccessRule[];
+  } {
+    const stmt = this.db.prepare(
+      'SELECT * FROM proxy_access_rules WHERE origin_id = ? OR origin_id IS NULL',
+    );
+    const rules = stmt.all(originId) as ProxyAccessRule[];
+
+    const denyRules: ProxyAccessRule[] = [];
+    const originAllowRules: ProxyAccessRule[] = [];
+    const globalAllowRules: ProxyAccessRule[] = [];
+
+    for (const rule of rules) {
+      if (rule.rule_type === 'deny') {
+        denyRules.push(rule);
+      } else if (rule.origin_id !== null) {
+        originAllowRules.push(rule);
+      } else {
+        globalAllowRules.push(rule);
+      }
+    }
+
+    return { denyRules, originAllowRules, globalAllowRules };
+  }
+
+  getOriginIdByOrigin(origin: string): number | null {
+    const stmt = this.db.prepare('SELECT id FROM proxy_allowed_origins WHERE origin = ? LIMIT 1');
+    const row = stmt.get(origin) as { id: number } | undefined;
+    return row?.id ?? null;
   }
 }
