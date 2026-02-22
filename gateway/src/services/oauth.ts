@@ -95,7 +95,7 @@ export class OAuthService {
    * @param handle - The user's AT Protocol handle
    * @param customRedirect - Optional custom redirect URI
    */
-  async generateAuthUrl(appId: string, handle: string, customRedirect?: string): Promise<{
+  async generateAuthUrl(appId: string, handle: string, customRedirect?: string, appRedirectUri?: string): Promise<{
     url: string;
     state: string;
   }> {
@@ -127,7 +127,7 @@ export class OAuthService {
       state,
       code_verifier: '',
       app_id: appId,
-      redirect_uri: customRedirect || this.redirectUri,
+      redirect_uri: appRedirectUri || customRedirect || this.redirectUri,
       created_at: Math.floor(Date.now() / 1000),
     };
     this.db.saveOAuthState(oauthState);
