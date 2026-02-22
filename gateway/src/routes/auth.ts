@@ -94,22 +94,25 @@ export function createAuthRoutes(
       throw httpError.notFound('app_not_found', `Application '${app_id}' is not registered`);
     }
 
-    // Validate redirect_uri if provided
-    let validatedRedirectUri: string | undefined;
+    // Validate redirect_uri if provided (used for post-auth redirect, not OAuth redirect_uri)
+    let appRedirectUri: string | undefined;
     if (typeof redirect_uri === 'string') {
       if (!isValidRedirectUri(redirect_uri, app.callback_url)) {
         throw httpError.badRequest('invalid_redirect_uri', 'redirect_uri does not match the registered callback URL for this application');
       }
-      validatedRedirectUri = redirect_uri;
+      appRedirectUri = redirect_uri;
     } else if (app.callback_url) {
-      // Use the registered callback URL as default
-      validatedRedirectUri = app.callback_url;
+      appRedirectUri = app.callback_url;
     }
 
+    // Don't pass the app's redirect_uri to the AT Protocol OAuth client --
+    // the PDS must redirect back to ATAuth's own callback, not the downstream app.
+    // The app's redirect_uri is stored in the OAuth state for post-auth redirect.
     const { url, state } = await oauth.generateAuthUrl(
       app_id,
       handle,
-      validatedRedirectUri
+      undefined,
+      appRedirectUri
     );
 
     res.json({
