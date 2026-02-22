@@ -11,6 +11,7 @@ Why: The user's PDS is at `arcnode.xyz`. If ATAuth is also on `arcnode.xyz`, the
 
 ## Architecture
 
+### OIDC Provider Flow
 ```
 OIDC Client (e.g., Audiobookshelf)
     ↓ redirects to
@@ -23,10 +24,26 @@ ATAuth (receives AT Proto tokens, issues OIDC tokens)
 OIDC Client (receives OIDC tokens)
 ```
 
-- **Gateway**: Node.js/Express 5, TypeScript, SQLite
+### Forward-Auth SSO Proxy Flow
+```
+Browser → Protected Service (e.g., SearXNG)
+    ↓ nginx auth_request subrequest
+ATAuth /auth/verify (checks _atauth_proxy cookie)
+    ↓ no valid session?
+ATAuth /auth/login → AT Protocol OAuth → callback
+    ↓ user authenticates, access rules evaluated
+Session created → _atauth_proxy cookie set
+    ↓ ticket exchange
+Protected service receives X-Auth-DID, X-Auth-Handle headers
+```
+
+- **Gateway**: Node.js/Express 5, TypeScript, SQLite (better-sqlite3)
 - **Identity Source**: AT Protocol OAuth (user's PDS, e.g., arcnode.xyz or bsky.social)
-- **Token Format**: ES256 signed JWTs
+- **Token Format**: ES256 signed JWTs (OIDC), HMAC-SHA256 signed cookies (proxy)
 - **PKCE**: Required for all flows
+- **Forward-Auth Proxy**: nginx `auth_request` based SSO for arbitrary services
+- **Access Control**: Per-user DID and handle pattern rules, deny-overrides evaluation
+- **Admin Dashboard**: Server-rendered HTML at `/admin/dashboard` (cookie or Bearer token auth)
 
 ## Deployment
 
@@ -39,49 +56,84 @@ OIDC Client (receives OIDC tokens)
 - **Registry**: `registry.digitalocean.com/ghostmesh-registry`
 - **Image**: `registry.digitalocean.com/ghostmesh-registry/atauth:latest`
 - **Storage**: SQLite on `do-block-storage` PVC
-- **Backups**: Every 6 hours to Backblaze B2 (`age` encrypted, cronjob in `backups` namespace)
+- **Backups**: Every 2 hours to Backblaze B2 (`age` encrypted, cronjob in `backups` namespace)
+- **Strategy**: Recreate (RWO PVC for SQLite -- cannot use RollingUpdate)
+- **Pre-deploy backup**: `kubectl exec -n atauth deploy/atauth -- cp /app/data/gateway.db /app/data/gateway.db.backup`
+- **Rollback**: `kubectl rollout undo deployment/atauth -n atauth` (10 revisions kept)
 
-### Deployment Process (Manual)
+### CI/CD (Gitea Actions)
+- **Workflow**: `.gitea/workflows/deploy.yml`
+- **Pipeline**: test (typecheck + lint + vitest) -> build Docker -> push to DO registry -> deploy
+- **Runner**: act_runner v0.2.11 on pv4 LXC 111 (labels: `ubuntu-latest`, `host`)
+- **Known issue**: `needs` job scheduling can stall. Fix: restart Gitea then act_runner on LXC 111
+
+### Deployment Process (Manual Fallback)
 ```bash
-# Build and push
-docker build --platform linux/amd64 -t registry.digitalocean.com/ghostmesh-registry/atauth:latest .
+# Build and push (from gateway/ directory)
+docker build --platform linux/amd64 \
+  -t registry.digitalocean.com/ghostmesh-registry/atauth:$(git rev-parse --short HEAD) \
+  -t registry.digitalocean.com/ghostmesh-registry/atauth:latest \
+  gateway/
+docker push registry.digitalocean.com/ghostmesh-registry/atauth:$(git rev-parse --short HEAD)
 docker push registry.digitalocean.com/ghostmesh-registry/atauth:latest
 
 # Deploy
-kubectl rollout restart deployment/atauth-gateway -n atauth
+kubectl rollout restart deployment/atauth -n atauth
+kubectl rollout status deployment/atauth -n atauth --timeout=120s
 ```
 
 ### Local k3s (Suspended)
-Previously ran on k3s (Proxmox VMs 321/322) with two namespaces: `atauth-staging` (standalone)
-and `apricot` (integrated with PDS). Local k3s VMs shut down as of Feb 12, 2026.
+Previously ran on k3s (Proxmox VMs 321/322). Shut down Feb 12, 2026.
 Config preserved in `gateway/k8s/overlays/staging/` and `gateway/k8s/overlays/production/`.
 
 ## Admin Access
 
+### Admin Dashboard (Web UI)
+- **URL**: `https://apricot.workingtitle.zip/admin/login`
+- **Auth**: Admin token from Vaultwarden (sets `_atauth_admin` cookie, 24h TTL)
+- **Pages**: Overview, Origins, Access Rules, Sessions, Access Check Tool
+- **CSRF**: All forms include HMAC-signed hidden tokens (1h validity)
+
 ### Admin Token
 The admin token is stored in **Vaultwarden**:
 - **URL**: https://vaultwarden.cloudforest-basilisk.ts.net
-- **Location**: `ATAuth` folder → `Admin Token - Staging` or `Admin Token - Production`
+- **Location**: `ATAuth` folder -> `Admin Token - Staging` or `Admin Token - Production`
+- **k8s secret**: `atauth-secrets` key `ATAUTH_ADMIN_TOKEN` in namespace `atauth`
 
 ### Using Admin API
 ```bash
-# Set token from Vaultwarden
+# Set token from Vaultwarden (or from k8s secret)
 export ADMIN_TOKEN="<token-from-vaultwarden>"
 
 # List OIDC clients
-curl -s "https://auth-staging.workingtitle.zip/admin/oidc/clients" \
+curl -s "https://apricot.workingtitle.zip/admin/oidc/clients" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
 
-# Create/update client
-curl -X POST "https://auth-staging.workingtitle.zip/admin/oidc/clients" \
+# List proxy origins
+curl -s "https://apricot.workingtitle.zip/admin/proxy/origins" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
+
+# List access rules
+curl -s "https://apricot.workingtitle.zip/admin/proxy/access" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
+
+# Create access rule (allow a specific DID)
+curl -X POST "https://apricot.workingtitle.zip/admin/proxy/access" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "client_name": "My App",
-    "redirect_uris": ["https://myapp.example.com/callback"],
-    "grant_types": ["authorization_code", "refresh_token"],
-    "token_endpoint_auth_method": "client_secret_basic"
-  }'
+  -d '{"rule_type":"allow","subject_type":"did","subject_value":"did:plc:abc123"}'
+
+# Create access rule (allow all handles on a PDS domain)
+curl -X POST "https://apricot.workingtitle.zip/admin/proxy/access" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"rule_type":"allow","subject_type":"handle_pattern","subject_value":"*.arcnode.xyz"}'
+
+# Dry-run access check
+curl -X POST "https://apricot.workingtitle.zip/admin/proxy/access/check" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"did":"did:plc:abc123","handle":"user.bsky.social","origin":"https://search.arcnode.xyz"}'
 ```
 
 ## OIDC Client Configuration
@@ -108,6 +160,46 @@ All secrets in **Vaultwarden** (LXC 120 @ vaultwarden.cloudforest-basilisk.ts.ne
 - `ATAuth/OIDC Clients/Audiobookshelf`
 - `ATAuth/OIDC Key Secret`
 
+## Forward-Auth Proxy
+
+### Access Control Model
+- **Table**: `proxy_access_rules` in SQLite
+- **Default**: No rules = open access (backward compatible). First rule triggers default-deny.
+- **Deny overrides allow**: Deny rules always win regardless of order
+- **Per-origin + global**: Rules can target a specific origin (`origin_id`) or apply globally (`origin_id = NULL`)
+
+**Evaluation order**:
+1. Deny rules (per-origin + global) -- if any match, reject
+2. Per-origin allow rules -- if any match, allow
+3. Global allow rules -- if any match, allow
+4. No match -- deny
+
+**Handle pattern matching**: `*` = all, `*.arcnode.xyz` = suffix match, `bkb.arcnode.xyz` = exact
+
+### Cookie Types (HMAC-SHA256 signed, `typ` discriminator prevents confusion)
+| Cookie | Purpose | TTL |
+|--------|---------|-----|
+| `_atauth_session` | OAuth flow session state | configurable |
+| `_atauth_proxy` | Proxy auth for protected services | `SESSION_TTL` (default 7 days) |
+| `_atauth_admin` | Admin dashboard session | 24 hours |
+
+### Key Files
+| File | Purpose |
+|------|---------|
+| `src/routes/proxy-auth.ts` | Forward-auth routes (`/auth/verify`, `/auth/login`, `/auth/callback`) + `enforceAccess` |
+| `src/utils/proxy-auth.ts` | Cookie create/verify, ticket functions, parsing utilities |
+| `src/utils/access-check.ts` | Pure `matchHandlePattern` + `checkAccess` functions |
+| `src/routes/admin.ts` | Admin API (Bearer + cookie auth), login/logout routes |
+| `src/routes/admin-dashboard.ts` | Server-rendered HTML dashboard (all pages + CSRF) |
+| `src/services/database.ts` | SQLite schema, migrations, all DB methods |
+| `src/types/proxy.ts` | `ProxyAccessRule`, `AccessCheckResult`, proxy config types |
+
+### Important Notes
+- **Do NOT restart ATAuth to rotate HMAC secrets** -- use admin API `PUT /admin/apps/:id` with `{"rotate_secret": true}`, then update the downstream service's k8s secret and restart that service only
+- **HMAC encoding**: ATAuth signs with `createHmac('sha256', secretString)` (UTF-8). Consumers must use UTF-8 encoding of the hex secret string
+- `/auth/verify` is called on every nginx subrequest -- no rate limiting on this endpoint (mounted before rate limit middleware)
+- Access denied attempts are logged: `[Proxy ACL] Denied <handle> (<did>): <reason>`
+
 ## Infrastructure
 
 ### Cloudflare Configuration
@@ -127,13 +219,19 @@ All secrets in **Vaultwarden** (LXC 120 @ vaultwarden.cloudforest-basilisk.ts.ne
 ```bash
 # Check deployment
 kubectl -n atauth get pods
-kubectl -n atauth logs -l app.kubernetes.io/part-of=atauth
+kubectl -n atauth logs deploy/atauth --tail=50
 
-# View/edit config
-kubectl -n atauth get configmap atauth-gateway-config -o yaml
+# Check secrets
+kubectl -n atauth get secret atauth-secrets -o jsonpath='{.data}' | python3 -m json.tool
 
-# Restart after config change
-kubectl -n atauth rollout restart deployment atauth-gateway
+# Restart
+kubectl -n atauth rollout restart deployment/atauth
+
+# Rollback
+kubectl -n atauth rollout undo deployment/atauth
+
+# SQLite access
+kubectl exec -n atauth deploy/atauth -- sqlite3 /app/data/gateway.db ".tables"
 ```
 
 ## Related Services
@@ -158,28 +256,6 @@ kubectl -n atauth rollout restart deployment atauth-gateway
 - **Location**: LXC 120
 - **URL**: https://vaultwarden.cloudforest-basilisk.ts.net
 
-## Testing
-
-### Run Tests
-```bash
-cd gateway
-npm run test:unit    # Unit tests only
-npm run test:e2e     # E2E tests only
-npm run test         # All tests with watch
-npm run test:run     # All tests once
-```
-
-### Manual OIDC Flow Test
-```bash
-# 1. Check discovery
-curl -s "https://auth-staging.workingtitle.zip/.well-known/openid-configuration" | jq .
-
-# 2. Check JWKS
-curl -s "https://auth-staging.workingtitle.zip/.well-known/jwks.json" | jq .
-
-# 3. Test in browser - go to Audiobookshelf and click "Login with OpenID"
-```
-
 ## API Endpoints
 
 ### OIDC Endpoints
@@ -192,16 +268,64 @@ curl -s "https://auth-staging.workingtitle.zip/.well-known/jwks.json" | jq .
 | `/oauth/userinfo` | User claims |
 | `/oauth/revoke` | Token revocation |
 
-### Admin Endpoints (requires Bearer token)
+### Forward-Auth Proxy Endpoints
 | Endpoint | Description |
 |----------|-------------|
+| `GET /auth/verify` | nginx `auth_request` target (checks proxy cookie) |
+| `GET /auth/login` | Initiates AT Protocol OAuth for proxy auth |
+| `GET /auth/callback` | OAuth callback, creates proxy session |
+
+### Admin Endpoints (requires Bearer token or `_atauth_admin` cookie)
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/login` | Login page (HTML) |
+| `POST /admin/login` | Authenticate with admin token, set cookie |
+| `GET /admin/logout` | Clear admin cookie |
+| `GET /admin/dashboard` | Overview page (HTML) |
+| `GET /admin/dashboard/origins` | Manage proxy origins (HTML) |
+| `GET /admin/dashboard/access` | Manage access rules (HTML) |
+| `GET /admin/dashboard/sessions` | Manage proxy sessions (HTML) |
+| `GET /admin/dashboard/check` | Access check tool (HTML) |
 | `GET /admin/oidc/clients` | List OIDC clients |
 | `POST /admin/oidc/clients` | Create OIDC client |
 | `GET /admin/oidc/clients/:id` | Get client details |
 | `PUT /admin/oidc/clients/:id` | Update client |
 | `DELETE /admin/oidc/clients/:id` | Delete client |
-| `GET /admin/sessions` | List sessions |
+| `GET /admin/proxy/origins` | List proxy origins (JSON) |
+| `POST /admin/proxy/origins` | Add proxy origin |
+| `DELETE /admin/proxy/origins/:id` | Remove proxy origin |
+| `GET /admin/proxy/access` | List access rules (JSON) |
+| `POST /admin/proxy/access` | Create access rule |
+| `DELETE /admin/proxy/access/:id` | Delete access rule |
+| `POST /admin/proxy/access/check` | Dry-run access check |
+| `GET /admin/proxy/sessions` | List proxy sessions |
+| `DELETE /admin/proxy/sessions/:id` | Revoke proxy session |
+| `GET /admin/sessions` | List OIDC sessions |
 | `GET /admin/keys` | List signing keys |
+
+## Testing
+
+### Test Suite (233 tests)
+```bash
+cd gateway
+npm run test:run     # All tests once
+npm run test:unit    # Unit tests only (src/)
+npm run test:e2e     # E2E tests only (tests/)
+npm run test         # All tests with watch
+npm run typecheck    # TypeScript type check
+npm run lint         # ESLint
+```
+
+### Test Files
+| File | Tests | Coverage |
+|------|-------|----------|
+| `src/utils/access-check.test.ts` | 16 | matchHandlePattern, checkAccess evaluation |
+| `src/utils/proxy-auth.test.ts` | 16 | Cookie create/verify, tickets, parsing, admin cookie |
+| `src/routes/admin-dashboard.test.ts` | 16 | Dashboard pages, CRUD forms, CSRF, cookie auth |
+| `src/routes/admin.proxy.test.ts` | 19 | Access rules API, cookie auth login/logout |
+| `src/routes/proxy-auth.test.ts` | ~50 | Forward-auth flows, access control integration |
+| `src/services/database.proxy.test.ts` | 14 | Access rules CRUD, cascade delete, partitioning |
+| `tests/oidc-flow.test.ts` | ~80 | Full OIDC provider E2E |
 
 ## Troubleshooting
 
@@ -216,3 +340,25 @@ curl -s "https://auth-staging.workingtitle.zip/.well-known/jwks.json" | jq .
 ### Token refresh failures / Users logged out
 **Cause**: iOS app sends chunked encoding with empty body on refreshSession.
 **Fix**: nginx with `proxy_pass_request_body off` for that endpoint (handled on PDS side).
+
+### Access rules lock everyone out
+**Fix**: Delete all rules to restore open mode:
+```bash
+kubectl exec -n atauth deploy/atauth -- sqlite3 /app/data/gateway.db "DELETE FROM proxy_access_rules;"
+```
+Or via admin API: `DELETE /admin/proxy/access/:id` with Bearer token.
+
+### CI pipeline stuck (Gitea Actions)
+**Cause**: `needs` job scheduling stalls after test job completes.
+**Fix**: Restart Gitea then act_runner on LXC 111:
+```bash
+ssh root@pv4.cloudforest-basilisk.ts.net "pct exec 111 -- bash -c 'systemctl restart gitea && sleep 5 && systemctl restart act_runner'"
+```
+If still stuck, deploy manually (see Deployment Process above).
+
+### Dockerfile still builds admin-ui stage
+The `admin-ui-builder` stage in the Dockerfile builds the old static admin UI. It's now unused (replaced by server-rendered dashboard) but harmless. Can be removed in a future cleanup.
+
+## Pending Work
+- **Dependency upgrades**: nodemailer 6->8 (CVE-2025-14874), @simplewebauthn/server 10->13, uuid 9->13, better-sqlite3 11->12
+- **Dockerfile cleanup**: Remove `admin-ui-builder` stage and `admin-ui/` static files
