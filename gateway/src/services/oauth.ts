@@ -34,17 +34,27 @@ export class OAuthService {
     this.redirectUri = redirectUri;
   }
 
-  async initialize(): Promise<void> {
+  async initialize(additionalRedirectUris?: string[]): Promise<void> {
     // Derive proxy callback from the primary redirect URI's base
     const baseUrl = this.redirectUri.replace(/\/[^/]*$/, '');
     const proxyCallbackUri = `${baseUrl}/proxy/callback`;
+
+    // Collect all redirect URIs: primary, proxy, and any additional (e.g. OIDC callback)
+    const redirectUris: [string, ...string[]] = [this.redirectUri, proxyCallbackUri];
+    if (additionalRedirectUris) {
+      for (const uri of additionalRedirectUris) {
+        if (!redirectUris.includes(uri)) {
+          redirectUris.push(uri);
+        }
+      }
+    }
 
     this.client = new NodeOAuthClient({
       clientMetadata: {
         client_id: this.clientId,
         client_name: 'ATAuth Gateway',
         client_uri: this.clientId,
-        redirect_uris: [this.redirectUri, proxyCallbackUri],
+        redirect_uris: redirectUris,
         grant_types: ['authorization_code', 'refresh_token'],
         response_types: ['code'],
         scope: 'atproto transition:generic',

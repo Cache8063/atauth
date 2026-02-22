@@ -112,8 +112,17 @@ async function main(): Promise<void> {
   const db = new DatabaseService(config.dbPath);
   const oauth = new OAuthService(db, config.clientId, config.redirectUri);
 
+  // Collect additional redirect URIs needed by OIDC and forward-auth
+  const additionalRedirectUris: string[] = [];
+  if (config.oidc.enabled && config.oidc.issuer) {
+    additionalRedirectUris.push(`${config.oidc.issuer}/oauth/callback`);
+  }
+  if (config.forwardAuth.enabled && config.oidc.issuer) {
+    additionalRedirectUris.push(`${config.oidc.issuer}/auth/proxy/callback`);
+  }
+
   try {
-    await oauth.initialize();
+    await oauth.initialize(additionalRedirectUris);
     console.log('OAuth client initialized');
   } catch (error) {
     console.error('Failed to initialize OAuth client:', error);
