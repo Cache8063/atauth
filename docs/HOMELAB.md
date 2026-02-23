@@ -1,83 +1,113 @@
 # ATAuth Homelab Deployment Guide
 
-ATAuth provides decentralized authentication for your homelab using AT Protocol. Instead of managing passwords, users authenticate with their AT Protocol identity (like `@alice.your-pds.com`).
+ATAuth provides OIDC-based authentication for your homelab using AT Protocol identities. Users sign in with their `@handle` (Bluesky or self-hosted PDS) and your apps receive standard OIDC tokens.
 
-## Why AT Protocol for Homelab Auth?
-
-| Traditional SSO | ATAuth + AT Protocol |
-|----------------|---------------------|
-| You manage passwords | PDS manages identity |
-| You handle MFA | PDS handles MFA |
-| You store credentials | No credentials stored |
-| Single point of failure | Decentralized identity |
-| Complex setup (LDAP, etc.) | Simple gateway deployment |
-
-**With a self-hosted PDS**, you have:
-- Full control over your identity infrastructure
-- No external dependencies (works offline)
-- Same security model as enterprise OAuth
-- Portable identity across the AT Protocol network
-
-## Quick Start
-
-### 1. Prerequisites
+## Prerequisites
 
 - Docker and Docker Compose
-- A domain name (e.g., `auth.homelab.local`)
-- Reverse proxy with TLS (Caddy, Traefik, or nginx)
-- Optional: Your own PDS for full independence
+- A domain name with TLS (reverse proxy: Caddy, Traefik, or nginx)
+- Optional: Your own PDS for fully self-hosted identity
 
-### 2. Deploy the Gateway
+## Deploy
 
 ```bash
-# Clone the repository
-git clone https://github.com/Cache8063/atauth.git
+git clone https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth.git
 cd atauth
-
-# Configure environment
 cp .env.example .env
 
 # Generate admin token
 echo "ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env
 
-# Edit .env with your domain
-nano .env
+# Set your public URL
+# Edit .env: OAUTH_CLIENT_ID and OAUTH_REDIRECT_URI
 
-# Start the gateway
 docker compose up -d
 ```
 
-### 3. Configure Your Domain
+The gateway runs on port 3100. Put a reverse proxy with TLS in front of it.
 
-Update `.env`:
-```env
-OAUTH_CLIENT_ID=https://auth.homelab.local/client-metadata.json
-OAUTH_REDIRECT_URI=https://auth.homelab.local/auth/callback
-CORS_ORIGINS=https://jellyfin.homelab.local,https://nextcloud.homelab.local
-```
+## Register Apps
 
-### 4. Register Your Apps
+### Option 1: Admin Dashboard (Recommended)
+
+Open `https://your-atauth-domain/admin/login`, enter your admin token, then use the **Setup Wizard** to register apps. It includes presets for:
+
+- Audiobookshelf, Jellyfin, Gitea/Forgejo, Nextcloud, Immich
+- Grafana, Wiki.js, Portainer, Outline, Mealie
+
+Each preset auto-fills the correct redirect URI, scopes, and grant types.
+
+### Option 2: Admin API
 
 ```bash
-# Register Jellyfin
-curl -X POST https://auth.homelab.local/admin/apps \
+curl -X POST https://your-atauth-domain/admin/oidc/clients \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "id": "jellyfin",
-    "name": "Jellyfin Media Server",
-    "callback_url": "https://jellyfin.homelab.local/sso/callback"
+    "name": "Jellyfin",
+    "redirect_uris": ["https://jellyfin.example.com/sso/OID/redirect/ATAuth"],
+    "grant_types": ["authorization_code", "refresh_token"],
+    "scopes": ["openid", "profile", "email"],
+    "require_pkce": true,
+    "token_endpoint_auth_method": "client_secret_basic"
   }'
+```
 
-# Save the returned hmac_secret for your app's backend
+Save the returned `client_secret` -- it is only shown once.
+
+## Configure Your App
+
+Point your app's OIDC settings to ATAuth's discovery URL:
+
+```text
+https://your-atauth-domain/.well-known/openid-configuration
+```
+
+This auto-discovers all endpoints. Most apps need:
+
+| Setting | Value |
+| --- | --- |
+| Discovery URL | `https://your-atauth-domain/.well-known/openid-configuration` |
+| Client ID | The ID you chose when registering |
+| Client Secret | The secret returned at registration |
+| Scopes | `openid profile email` |
+
+## Forward-Auth Proxy
+
+For apps without OIDC support, ATAuth provides nginx `auth_request` based SSO.
+
+1. Register the origin in the admin dashboard under **Proxy Origins**
+2. Add access rules under **Access Rules**
+3. Use the **Proxy Setup Wizard** to generate nginx config snippets
+
+Example nginx config:
+
+```nginx
+location / {
+    auth_request /auth/verify;
+    auth_request_set $auth_did $upstream_http_x_auth_did;
+    auth_request_set $auth_handle $upstream_http_x_auth_handle;
+    proxy_set_header X-Auth-DID $auth_did;
+    proxy_set_header X-Auth-Handle $auth_handle;
+    proxy_pass http://your-app;
+}
+
+location = /auth/verify {
+    internal;
+    proxy_pass http://atauth:3100;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+}
 ```
 
 ## Reverse Proxy Configuration
 
-### Caddy (Recommended)
+### Caddy
 
 ```caddyfile
-auth.homelab.local {
+auth.example.com {
     reverse_proxy atauth:3100
 }
 ```
@@ -85,10 +115,9 @@ auth.homelab.local {
 ### Traefik
 
 ```yaml
-# docker-compose.yml labels
 labels:
   - "traefik.enable=true"
-  - "traefik.http.routers.atauth.rule=Host(`auth.homelab.local`)"
+  - "traefik.http.routers.atauth.rule=Host(`auth.example.com`)"
   - "traefik.http.routers.atauth.entrypoints=websecure"
   - "traefik.http.routers.atauth.tls.certresolver=letsencrypt"
   - "traefik.http.services.atauth.loadbalancer.server.port=3100"
@@ -99,10 +128,10 @@ labels:
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name auth.homelab.local;
+    server_name auth.example.com;
 
-    ssl_certificate /etc/ssl/certs/auth.homelab.local.crt;
-    ssl_certificate_key /etc/ssl/private/auth.homelab.local.key;
+    ssl_certificate /etc/ssl/certs/auth.example.com.crt;
+    ssl_certificate_key /etc/ssl/private/auth.example.com.key;
 
     location / {
         proxy_pass http://atauth:3100;
@@ -115,139 +144,37 @@ server {
 }
 ```
 
-## Self-Hosted PDS Setup
+## Self-Hosted PDS
 
-For complete independence from Bluesky, run your own PDS:
+With your own PDS, ATAuth becomes fully independent:
 
-```yaml
-# docker-compose.pds.yml
-services:
-  pds:
-    image: ghcr.io/bluesky-social/pds:latest
-    environment:
-      - PDS_HOSTNAME=pds.homelab.local
-      - PDS_JWT_SECRET=your-jwt-secret
-      - PDS_ADMIN_PASSWORD=your-admin-password
-      - PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=your-key
-      - PDS_DATA_DIRECTORY=/pds
-      - PDS_BLOBSTORE_DISK_LOCATION=/pds/blocks
-      - PDS_DID_PLC_URL=https://plc.directory
-      - PDS_BSKY_APP_VIEW_URL=https://api.bsky.app
-      - PDS_BSKY_APP_VIEW_DID=did:web:api.bsky.app
-      - PDS_REPORT_SERVICE_URL=https://mod.bsky.app
-      - PDS_REPORT_SERVICE_DID=did:plc:ar7c4by46qjdydhdevvrndac
-      - PDS_CRAWLERS=https://bsky.network
-    volumes:
-      - pds-data:/pds
-    ports:
-      - "3000:3000"
-```
+- Users get handles like `@alice.your-domain.com`
+- No dependency on Bluesky
+- Works on air-gapped networks
 
-Then your users can create accounts like `@alice.pds.homelab.local` and authenticate through ATAuth.
+The gateway auto-discovers the user's PDS from their handle. No special configuration needed -- just ensure the PDS is reachable.
 
-## Architecture
+## Access Control
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Your Homelab Network                        │
-│                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │   Jellyfin   │  │  NextCloud   │  │    Gitea     │          │
-│  │              │  │              │  │              │          │
-│  │  (app_id:    │  │  (app_id:    │  │  (app_id:    │          │
-│  │   jellyfin)  │  │   nextcloud) │  │   gitea)     │          │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘          │
-│         │                 │                 │                   │
-│         └─────────────────┼─────────────────┘                   │
-│                           │                                     │
-│                   ┌───────▼───────┐                            │
-│                   │    ATAuth     │                            │
-│                   │    Gateway    │                            │
-│                   │  (one place)  │                            │
-│                   └───────┬───────┘                            │
-│                           │                                     │
-│                   ┌───────▼───────┐                            │
-│                   │  Your PDS or  │                            │
-│                   │   Bluesky     │                            │
-│                   └───────────────┘                            │
-└─────────────────────────────────────────────────────────────────┘
-```
+ATAuth supports per-user access rules:
 
-## Integrating Apps
+- **Allow/deny by DID**: Target specific AT Protocol identities
+- **Allow/deny by handle pattern**: `*.arcnode.xyz` matches all handles on a PDS domain
+- **Deny overrides**: Deny rules always win regardless of order
+- **Per-origin scoping**: Rules can target a specific origin or apply globally
 
-### Generic OAuth Integration
+Manage rules via the admin dashboard or API.
 
-Most apps with OAuth support can use ATAuth:
+## Backup
 
-1. **Register the app** with ATAuth admin API
-2. **Configure OAuth** in the app:
-   - Authorization URL: `https://auth.homelab.local/auth/init`
-   - Callback URL: Your app's callback
-3. **Verify tokens** in your app's backend using the HMAC secret
-
-### Token Verification (Backend)
-
-For apps you control, verify tokens server-side:
-
-**Node.js:**
-```javascript
-import crypto from 'crypto';
-
-function verifyToken(token, secret) {
-  const [payloadB64, signature] = token.split('.');
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(payloadB64)
-    .digest('base64url');
-
-  if (signature !== expected) return null;
-
-  const payload = JSON.parse(Buffer.from(payloadB64, 'base64url'));
-  if (payload.exp < Date.now() / 1000) return null;
-
-  return payload; // { did, handle, user_id, app_id, exp }
-}
-```
-
-**Rust:**
-```rust
-use atauth::TokenVerifier;
-
-let verifier = TokenVerifier::new(b"your-hmac-secret");
-match verifier.verify(token) {
-    Ok(payload) => println!("Authenticated: {}", payload.handle),
-    Err(e) => println!("Invalid token: {}", e),
-}
-```
-
-## Security Considerations
-
-1. **Always use TLS** - OAuth requires HTTPS
-2. **Protect admin token** - Only use for initial app registration
-3. **HMAC secrets** - Store securely, rotate periodically
-4. **Rate limiting** - Built-in, but consider additional WAF rules
-5. **Network isolation** - Keep ATAuth on a trusted network segment
-
-## Troubleshooting
-
-### OAuth Error: "Client not found"
-
-Your `OAUTH_CLIENT_ID` must be a publicly accessible URL that returns valid client metadata. Verify:
 ```bash
-curl https://auth.homelab.local/client-metadata.json
+# Backup the SQLite database
+docker compose exec atauth cp /app/data/gateway.db /app/data/gateway.db.backup
+
+# Or backup the volume
+docker run --rm -v atauth_atauth-data:/data -v $(pwd):/backup alpine \
+  tar czf /backup/atauth-backup.tar.gz -C /data .
 ```
-
-### Users Can't Authenticate
-
-1. Check PDS is reachable from ATAuth container
-2. Verify user's handle resolves correctly
-3. Check ATAuth logs: `docker compose logs atauth`
-
-### Token Verification Fails
-
-1. Ensure HMAC secret matches between gateway and your app
-2. Check token hasn't expired
-3. Verify `app_id` matches the registered app
 
 ## Updating
 
@@ -256,14 +183,18 @@ docker compose pull
 docker compose up -d
 ```
 
-## Backup
+## Troubleshooting
 
-The gateway stores data in a SQLite database:
-```bash
-# Backup
-docker compose exec atauth cp /app/data/gateway.db /app/data/gateway.db.backup
+### OIDC discovery returns 404
 
-# Or backup the volume
-docker run --rm -v atauth_atauth-data:/data -v $(pwd):/backup alpine \
-  tar czf /backup/atauth-backup.tar.gz -C /data .
-```
+Ensure your `OAUTH_CLIENT_ID` URL is publicly accessible and the gateway is running.
+
+### Users can't authenticate
+
+1. Check the PDS is reachable from the ATAuth container
+2. Verify the user's handle resolves correctly
+3. Check logs: `docker compose logs atauth`
+
+### "invalid_redirect_uri"
+
+The redirect URI in the OIDC request must exactly match one registered for the client (including scheme, host, port, and path).
