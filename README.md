@@ -1,238 +1,137 @@
-# ATAuth - Decentralized Authentication for AT Protocol
+# ATAuth - OIDC Provider for AT Protocol
 
-A complete, plug-and-play authentication system using AT Protocol (Bluesky) OAuth. Use it with Bluesky or **run your own PDS** for fully self-hosted, decentralized identity.
+An OpenID Connect (OIDC) Provider that uses AT Protocol OAuth (Bluesky) as the identity source. Authenticate users via their `@handle` -- works with Bluesky or any self-hosted PDS.
 
-## Why ATAuth?
+## What It Does
 
-**No more password databases.** Users authenticate with their AT Protocol identity (`@user.bsky.social` or `@alice.your-pds.com`). You verify tokens - the identity provider handles the rest.
+ATAuth sits between your apps and AT Protocol identity:
 
-| Traditional Auth | ATAuth |
-|-----------------|--------|
-| You store passwords | PDS manages identity |
-| You implement MFA | PDS handles MFA |
-| Password resets, account recovery | Not your problem |
-| LDAP, Active Directory complexity | Simple token verification |
+```text
+Your App (OIDC Client)
+    |
+    v
+ATAuth (OIDC Provider)
+    |
+    v
+User's PDS (Bluesky / self-hosted)
+    |
+    v
+User authenticates with their AT Proto identity
+    |
+    v
+ATAuth issues standard OIDC tokens back to your app
+```
 
-**With a self-hosted PDS**, ATAuth becomes a fully independent auth system - no different from running your own Keycloak, but with portable, decentralized identities.
+Any app that supports OpenID Connect can use ATAuth. No custom integration needed.
 
-## Quick Start (Docker)
+## Features
+
+- **Standard OIDC Provider**: Discovery, authorization, token, userinfo, revocation, JWKS endpoints
+- **Forward-Auth SSO Proxy**: nginx `auth_request` based single sign-on for any web service
+- **Admin Dashboard**: Web UI with setup wizard for common self-hosted apps
+- **Access Control**: Per-user DID and handle pattern rules with deny-overrides
+- **PKCE Support**: Configurable per-client
+- **ES256 Signed JWTs**: Proper key rotation via JWKS endpoint
+
+## Quick Start
 
 ```bash
-# Clone and configure
-git clone https://github.com/Cache8063/atauth.git
+git clone https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth.git
 cd atauth
 cp .env.example .env
 echo "ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env
 
-# Start the gateway
 docker compose up -d
-
-# Register your first app
-curl -X POST http://localhost:3100/admin/apps \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"id": "myapp", "name": "My Application"}'
 ```
 
-See [docs/HOMELAB.md](docs/HOMELAB.md) for complete deployment guide.
+Then open the admin dashboard at `http://localhost:3100/admin/login` and use the setup wizard to register your first app.
 
-## Components
+## Supported Apps
 
-| Component | Description |
-|-----------|-------------|
-| **[gateway/](gateway/)** | Node.js OAuth gateway server ([Docker image](https://ghcr.io/cache8063/atauth-gateway)) |
-| **[src/](src/)** | Rust token verification library |
-| **[ts/](ts/)** | TypeScript/React frontend utilities |
+The setup wizard includes presets for:
 
-## Architecture
+| App | Auth Method |
+| --- | --- |
+| Audiobookshelf | OIDC (OpenID Connect) |
+| Jellyfin | OIDC (via SSO plugin) |
+| Gitea / Forgejo | OIDC (built-in) |
+| Nextcloud | OIDC (via app) |
+| Immich | OIDC (built-in) |
+| Grafana | OIDC (built-in) |
+| Wiki.js | OIDC (built-in) |
+| Portainer | OIDC (built-in) |
+| Outline | OIDC (built-in) |
+| Mealie | OIDC (built-in) |
+| Any web service | Forward-auth proxy (nginx `auth_request`) |
+
+## OIDC Discovery
+
+Once running, your OIDC discovery document is at:
 
 ```text
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Your Apps      │────▶│  ATAuth Gateway │────▶│  PDS            │
-│  (any stack)    │     │   (one place)   │     │ (yours or bsky) │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-        │                       │
-        │ HMAC token            │ AT Protocol OAuth
-        ▼                       ▼
-┌─────────────────┐     ┌─────────────────┐
-│  Your Backend   │────▶│  Token Verify   │
-│  (Rust/Node/?)  │     │  (atauth lib)   │
-└─────────────────┘     └─────────────────┘
+https://your-domain/.well-known/openid-configuration
 ```
 
-**The gateway handles the complex OAuth flow once.** Your apps receive simple HMAC-signed tokens to verify.
+Configure any OIDC-compatible app with this URL and it will auto-discover all endpoints.
 
-## Self-Hosted PDS = Full Independence
+## Forward-Auth Proxy
 
-When you run your own PDS:
+For apps without OIDC support, ATAuth provides an nginx `auth_request` proxy:
+
+```nginx
+location / {
+    auth_request /auth/verify;
+    auth_request_set $auth_did $upstream_http_x_auth_did;
+    auth_request_set $auth_handle $upstream_http_x_auth_handle;
+    proxy_set_header X-Auth-DID $auth_did;
+    proxy_set_header X-Auth-Handle $auth_handle;
+    proxy_pass http://your-app;
+}
+
+location = /auth/verify {
+    internal;
+    proxy_pass http://atauth:3100;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+}
+```
+
+The admin dashboard generates these config snippets for you.
+
+## Self-Hosted PDS
+
+With a self-hosted PDS, ATAuth becomes a fully independent auth system:
+
 - Users get handles like `@alice.your-domain.com`
 - No dependency on Bluesky servers
 - Works on air-gapped networks
 - Same security model as enterprise OAuth
-- Your identity, your infrastructure
 
-```yaml
-# Add to your docker-compose.yml
-services:
-  pds:
-    image: ghcr.io/bluesky-social/pds:latest
-    # ... configure for your domain
-```
+## Architecture
 
-## Installation
-
-### Docker (Recommended)
-
-```bash
-# From GitHub Container Registry
-docker pull ghcr.io/cache8063/atauth-gateway:latest
-
-# From Gitea Container Registry (self-hosted mirror)
-docker pull your-gitea-instance.example.com/arcnode.xyz/atauth-gateway:latest
-```
-
-### Rust Library
-
-```toml
-[dependencies]
-atauth = { git = "https://github.com/Cache8063/atauth" }
-```
-
-### TypeScript/JavaScript
-
-```bash
-npm install atauth
-```
-
-## Usage
-
-### Gateway - Register Apps
-
-```bash
-curl -X POST https://auth.example.com/admin/apps \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "jellyfin",
-    "name": "Jellyfin",
-    "callback_url": "https://jellyfin.example.com/sso/callback"
-  }'
-# Returns: { "hmac_secret": "..." } - save this!
-```
-
-### Rust - Verify Tokens
-
-```rust
-use atauth::TokenVerifier;
-
-// Secret must be at least 32 bytes (256 bits) for security
-let verifier = TokenVerifier::new(b"your-hmac-secret-at-least-32-bytes!")
-    .expect("Secret must be at least 32 bytes");
-
-match verifier.verify(token) {
-    Ok(payload) => {
-        println!("Welcome, {}!", payload.handle);
-        // payload.did, payload.user_id, payload.app_id available
-    }
-    Err(e) => eprintln!("Auth failed: {}", e),
-}
-```
-
-### TypeScript - Frontend Integration
-
-```tsx
-import { useAuthStore } from 'atauth/react';
-
-function LoginButton() {
-  const { isAuthenticated, user, login, logout } = useAuthStore();
-
-  if (isAuthenticated) {
-    return (
-      <>
-        <span>Welcome, {user?.handle}!</span>
-        <button onClick={logout}>Logout</button>
-      </>
-    );
-  }
-
-  return <button onClick={login}>Login with AT Protocol</button>;
-}
-```
-
-### Node.js - Verify Tokens
-
-```javascript
-import crypto from 'crypto';
-
-function verifyToken(token, secret) {
-  const [payloadB64, signature] = token.split('.');
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(payloadB64)
-    .digest('base64url');
-
-  // Constant-time comparison
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-    return null;
-  }
-
-  const payload = JSON.parse(Buffer.from(payloadB64, 'base64url'));
-  return payload.exp > Date.now() / 1000 ? payload : null;
-}
-```
-
-## Features
-
-- **Multi-App Support**: One gateway serves all your apps with isolated secrets
-- **Rate Limiting**: Built-in IP-based rate limiting (configurable)
-- **Session Management**: SQLite or PostgreSQL session stores
-- **Security Hardened**: Constant-time comparison, CSRF protection, secure token transport
-- **Docker Ready**: Multi-arch images (amd64/arm64)
-- **Homelab Friendly**: Works with Traefik, Caddy, nginx
-
-## Token Format
-
-Simple HMAC-signed tokens (not full JWT):
-
-```
-base64url(payload).base64url(hmac_sha256(payload, secret))
-```
-
-Payload:
-```json
-{
-  "did": "did:plc:abc123...",
-  "handle": "user.bsky.social",
-  "user_id": 42,
-  "app_id": "myapp",
-  "iat": 1699900000,
-  "exp": 1699903600,
-  "nonce": "random-string"
-}
-```
-
-## Documentation
-
-- [Homelab Deployment Guide](docs/HOMELAB.md) - Docker, reverse proxy configs, self-hosted PDS
-- [Security Policy](SECURITY.md) - Reporting vulnerabilities
-- [Contributing](CONTRIBUTING.md) - How to contribute
-
-## Use Cases
-
-- **Homelab SSO**: Single sign-on for Jellyfin, NextCloud, Gitea, etc.
-- **Multi-tenant Apps**: Users bring their own identity
-- **AT Protocol Apps**: Games, social apps, tools for the ATmosphere
-- **Enterprise**: Self-hosted PDS for internal identity
+| Component | Description |
+| --- | --- |
+| **Gateway** | Node.js/Express 5, TypeScript, SQLite |
+| **Identity** | AT Protocol OAuth (user's PDS) |
+| **OIDC Tokens** | ES256 signed JWTs |
+| **Proxy Cookies** | HMAC-SHA256 signed, typed |
+| **Access Control** | Deny-overrides, per-origin + global rules |
 
 ## Security
 
-- HMAC-SHA256 with constant-time verification
-- Rate limiting on all endpoints
-- CSRF protection via cryptographic nonces
-- Tokens in URL fragments (not query params)
-- Sanitized error responses
+- Client secrets stored as SHA-256 hashes
+- PKCE support (configurable per-client)
+- Constant-time comparison for all secret verification
+- HMAC-signed CSRF tokens on all dashboard forms
+- Rate limiting on auth endpoints
+- WAF-compatible (Cloudflare Managed Ruleset + OWASP)
 
-See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
+## Documentation
+
+- [Homelab Deployment Guide](docs/HOMELAB.md)
+- [Security Policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 

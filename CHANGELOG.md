@@ -5,9 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-02-23
+
+### Fixed
+
+- Setup wizard double-protocol bug: entering `https://abs.example.com` in domain field no longer produces `https://https://abs.example.com/...` in redirect URIs
+
+### Added
+
+- Gitea OIDC client registration (client_id: `gitea`, PKCE disabled for compatibility)
+- Regression test for wizard domain protocol stripping
+
+### Removed
+
+- `gateway/admin-ui/` -- old React SPA (replaced by server-rendered dashboard)
+- `gateway/tekton/` -- old Tekton CI for suspended k3s
+- `gateway/helm/` -- unused Helm chart
+- `gateway/k8s/` -- old k3s kustomize manifests
+- `gateway/.gitea/workflows/build.yaml` -- stale k3s deploy workflow
+- `.github/` -- GitHub Actions and issue templates (repo is on Gitea)
+- Dockerfile `admin-ui-builder` stage (was a no-op after admin-ui removal)
+
+### Changed
+
+- CLAUDE.md: lean rewrite, operational content moved to `.claude/commands/` skills
+- README.md: rewritten for OIDC provider reality (removed stale Rust/TS library references)
+- Admin token rotated from placeholder to proper random token
+
 ## [2.0.0] - 2026-02-22
 
 ### Added
+
 - **OIDC Provider**: Full OpenID Connect provider using AT Protocol OAuth as identity source
   - Authorization endpoint with PKCE support
   - Token endpoint (authorization_code + refresh_token grants)
@@ -32,12 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI/CD**: Gitea Actions pipeline (test -> build -> push -> deploy to DigitalOcean k8s)
 
 ### Changed
+
 - **Infrastructure**: Migrated from local k3s (Proxmox) to DigitalOcean Managed Kubernetes
 - **Registry**: Moved from Gitea container registry to DigitalOcean Container Registry
 - **Deployment strategy**: Recreate (RWO PVC for SQLite)
 - **Test suite**: Expanded from ~50 to 262 tests across 11 test files
 
 ### Fixed
+
 - OIDC token endpoint: hash incoming client secret before comparing against stored SHA-256 hash
 - OIDC authorize: pass explicit redirect_uri to AT Protocol OAuth callback (prevents `@atproto/oauth-client` fallback mismatch)
 - OIDC userinfo: resolve DID to handle via `app.bsky.actor.getProfile` when no cached mapping exists
@@ -45,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Register OIDC and forward-auth callback URIs in NodeOAuthClient metadata
 
 ### Security
+
 - Client secrets stored as SHA-256 hashes (not plaintext)
 - Constant-time comparison for all secret verification
 - PKCE required for OIDC clients (configurable per-client)
@@ -53,41 +84,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.3.0] - 2025-12-15
 
 ### Changed
+
 - **Express 5**: Migrated gateway from Express 4 to Express 5
 - **ESLint 9**: Migrated to ESLint 9 flat config with typescript-eslint 8
 - **Async Error Handling**: Route handlers now use `throw` pattern instead of try/catch blocks
 - Added `HttpError` class and `httpError` factory functions for cleaner error handling
 
 ### Updated Dependencies
-- `express`: 4.18.2 → 5.0.0
-- `helmet`: 7.1.0 → 8.0.0
-- `@types/express`: 4.17.21 → 5.0.0
-- `eslint`: 8.56.0 → 9.0.0
-- `typescript-eslint`: 7.0.0 → 8.0.0
-- `@atproto/oauth-client-node`: 0.1.0 → 0.3.0
-- `better-sqlite3`: 11.0.0 → 11.6.0
-- `typescript`: 5.3.0 → 5.7.0
-- `vitest`: 1.0.0 → 2.0.0
-- `@types/node`: 20.10.0 → 22.0.0
+
+- `express`: 4.18.2 -> 5.0.0
+- `helmet`: 7.1.0 -> 8.0.0
+- `@types/express`: 4.17.21 -> 5.0.0
+- `eslint`: 8.56.0 -> 9.0.0
+- `typescript-eslint`: 7.0.0 -> 8.0.0
+- `@atproto/oauth-client-node`: 0.1.0 -> 0.3.0
+- `better-sqlite3`: 11.0.0 -> 11.6.0
+- `typescript`: 5.3.0 -> 5.7.0
+- `vitest`: 1.0.0 -> 2.0.0
+- `@types/node`: 20.10.0 -> 22.0.0
 
 ### Improved
+
 - Enabled `projectService` in typescript-eslint for better type-aware linting performance
 - Simplified error handling code (~150 lines of boilerplate removed)
 
 ## [1.2.0] - 2025-12-14
 
 ### Added
+
 - TypeScript library unit tests for token and validation modules
 - Security report issue template
 - GitHub issue labels (security, rust, typescript, gateway, breaking change, ci/cd)
 
 ### Changed
+
 - **BREAKING**: `TokenVerifier::new()` now returns `Result<Self, AuthError>` instead of `Self`
 - Minimum HMAC secret key length enforced at 32 bytes (256 bits)
 - TypeScript library defaults to `sessionStorage` instead of `localStorage`
 - Docker compose binds to localhost only (127.0.0.1) by default
 
 ### Security
+
 - Enforce minimum 32-byte secret key for HMAC-SHA256 in Rust library
 - Add HTTPS URL validation for production environments in TypeScript
 - Add redirect URI validation against registered callbacks in gateway
@@ -96,6 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-12-14
 
 ### Added
+
 - Initial release
 - Rust library for HMAC-SHA256 token verification
 - TypeScript/JavaScript library for frontend integration
@@ -109,12 +147,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD with GitHub Actions
 
 ### Security
+
 - Constant-time signature comparison
 - CSRF protection via cryptographic nonces
 - Input validation and sanitization
 - Rate limiting on all endpoints
 
-[2.0.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v1.3.0...main
+[2.0.1]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v2.0.0...main
+[2.0.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/Cache8063/atauth/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Cache8063/atauth/compare/v1.0.0...v1.2.0
 [1.0.0]: https://github.com/Cache8063/atauth/releases/tag/v1.0.0
