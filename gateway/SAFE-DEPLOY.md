@@ -1,217 +1,131 @@
 # Safe Deployment Runbook for ATAuth Gateway
 
-This document outlines the safe deployment procedure to avoid breaking production.
+## Current Environment
 
-## Deployment Strategy
-
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Develop   │────▶│   Staging   │────▶│ Production  │
-│   (local)   │     │  (k3s)      │     │   (k3s)     │
-└─────────────┘     └─────────────┘     └─────────────┘
-                          │                    │
-                    auth-staging.*       auth.* (existing)
-```
+| Setting | Value |
+|---------|-------|
+| Cluster | DigitalOcean Managed Kubernetes (`storm-dr-cluster`, nyc1) |
+| Namespace | `atauth` |
+| Registry | `registry.digitalocean.com/ghostmesh-registry` |
+| Image | `registry.digitalocean.com/ghostmesh-registry/atauth` |
+| URL | `https://auth-staging.workingtitle.zip` |
+| Apricot | `https://apricot.workingtitle.zip` |
+| Storage | SQLite on `do-block-storage` PVC |
+| Strategy | Recreate (RWO PVC -- cannot use RollingUpdate) |
 
 ## Pre-Deployment Checklist
 
-### Before ANY deployment:
-
-- [ ] All tests pass locally
-- [ ] Code reviewed and merged to appropriate branch
+- [ ] All tests pass locally (`cd gateway && npx vitest run`)
+- [ ] TypeScript compiles clean (`npx tsc --noEmit`)
+- [ ] ESLint passes (`npx eslint src/`)
 - [ ] Database schema changes are backward compatible
 - [ ] New environment variables documented
 
-### Before Production deployment:
-
-- [ ] Successfully deployed and tested in staging
-- [ ] Backup job completed successfully
-- [ ] Rollback procedure reviewed
-- [ ] Maintenance window communicated (if needed)
-
 ---
 
-## Step-by-Step Deployment
+## Automated Deployment (Gitea Actions)
 
-### 1. Deploy to Staging First
+Push to `main` triggers the CI pipeline:
 
+1. **Test** -- typecheck + lint + vitest
+2. **Build** -- Docker image with `--platform linux/amd64`
+3. **Push** -- to DO registry with commit SHA + `latest` tags
+4. **Deploy** -- `kubectl set image` + `kubectl rollout status`
+
+Workflow file: `.gitea/workflows/deploy.yml`
+
+**Known issue**: `needs` job scheduling can stall after test jobs complete.
+Fix: restart Gitea then act_runner on LXC 111:
 ```bash
-# Build and push staging image
-git checkout develop
-docker build -t gitea.cloudforest-basilisk.ts.net/arcnode.xyz/atauth-gateway:staging ./gateway
-docker push gitea.cloudforest-basilisk.ts.net/arcnode.xyz/atauth-gateway:staging
-
-# Deploy to staging namespace
-kubectl apply -k gateway/k8s/overlays/staging
-
-# Verify deployment
-kubectl -n atauth-staging rollout status deployment/atauth-gateway-staging
-kubectl -n atauth-staging logs -f deployment/atauth-gateway-staging
-```
-
-### 2. Test Staging Environment
-
-```bash
-# Health check
-curl https://auth-staging.cloudforest-basilisk.ts.net/health
-
-# Test OIDC discovery
-curl https://auth-staging.cloudforest-basilisk.ts.net/.well-known/openid-configuration
-
-# Test admin UI
-open https://auth-staging.cloudforest-basilisk.ts.net/admin
-
-# Run integration tests against staging
-# ... your test commands ...
-```
-
-### 3. Create Pre-Deployment Backup
-
-```bash
-# Trigger backup job
-kubectl -n atauth create job --from=cronjob/atauth-gateway-backup pre-deploy-$(date +%Y%m%d%H%M)
-
-# Wait for completion
-kubectl -n atauth wait --for=condition=complete job/pre-deploy-$(date +%Y%m%d%H%M) --timeout=120s
-
-# Verify backup exists
-kubectl -n atauth exec -it deploy/atauth-gateway -- ls -la /backups/
-```
-
-### 4. Deploy to Production
-
-```bash
-# Tag the release
-git checkout main
-git tag v1.x.x
-git push origin v1.x.x
-
-# Build production image with version tag
-docker build -t gitea.cloudforest-basilisk.ts.net/arcnode.xyz/atauth-gateway:v1.x.x ./gateway
-docker push gitea.cloudforest-basilisk.ts.net/arcnode.xyz/atauth-gateway:v1.x.x
-
-# Update production kustomization with new tag
-cd gateway/k8s/overlays/production
-# Edit kustomization.yaml to use new tag
-
-# Apply with dry-run first
-kubectl apply -k . --dry-run=server
-
-# Apply for real
-kubectl apply -k .
-
-# Watch rollout
-kubectl -n atauth rollout status deployment/atauth-gateway
-```
-
-### 5. Verify Production
-
-```bash
-# Health check
-curl https://auth.cloudforest-basilisk.ts.net/health
-
-# Check logs for errors
-kubectl -n atauth logs -f deployment/atauth-gateway --since=5m
-
-# Verify existing sessions still work
-# ... test with existing client apps ...
+ssh root@pv4.cloudforest-basilisk.ts.net \
+  "pct exec 111 -- bash -c 'systemctl restart gitea && sleep 5 && systemctl restart act_runner'"
 ```
 
 ---
 
-## Rollback Procedure
+## Manual Deployment (Fallback)
 
-### Quick Rollback (< 5 minutes)
+### 1. Pre-deploy backup
 
 ```bash
-# Rollback to previous deployment
-kubectl -n atauth rollout undo deployment/atauth-gateway
-
-# Verify rollback
-kubectl -n atauth rollout status deployment/atauth-gateway
+kubectl exec -n atauth deploy/atauth -- cp /app/data/gateway.db /app/data/gateway.db.backup
 ```
+
+### 2. Build and push
+
+```bash
+cd /path/to/atauth
+
+# Use unique tag (commit SHA or descriptive name)
+TAG=$(cd gateway && git rev-parse --short HEAD)
+
+docker build --platform linux/amd64 \
+  -t registry.digitalocean.com/ghostmesh-registry/atauth:$TAG \
+  -t registry.digitalocean.com/ghostmesh-registry/atauth:latest \
+  gateway/
+
+docker push registry.digitalocean.com/ghostmesh-registry/atauth:$TAG
+docker push registry.digitalocean.com/ghostmesh-registry/atauth:latest
+```
+
+### 3. Deploy
+
+```bash
+# Set the specific image tag (avoids k8s caching issues with :latest)
+kubectl set image deployment/atauth \
+  atauth=registry.digitalocean.com/ghostmesh-registry/atauth:$TAG \
+  -n atauth
+
+kubectl rollout status deployment/atauth -n atauth --timeout=120s
+```
+
+### 4. Verify
+
+```bash
+# Health check
+curl -s https://auth-staging.workingtitle.zip/health | jq .
+
+# OIDC discovery
+curl -s https://auth-staging.workingtitle.zip/.well-known/openid-configuration | jq .
+
+# Admin dashboard (requires auth)
+curl -s -o /dev/null -w "%{http_code}" https://apricot.workingtitle.zip/admin/login
+
+# Check logs
+kubectl -n atauth logs deploy/atauth --tail=20
+```
+
+---
+
+## Rollback
+
+### Quick Rollback
+
+```bash
+kubectl -n atauth rollout undo deployment/atauth
+kubectl -n atauth rollout status deployment/atauth
+```
+
+10 revision history is kept by default.
 
 ### Rollback with Database Restore
 
-If the new version corrupted data:
-
 ```bash
-# 1. Scale down the deployment
-kubectl -n atauth scale deployment/atauth-gateway --replicas=0
+# Scale down
+kubectl -n atauth scale deployment/atauth --replicas=0
 
-# 2. Find the backup to restore
-kubectl -n atauth exec -it <backup-pod> -- ls -la /backups/
+# Restore from pre-deploy backup
+kubectl -n atauth exec -it <pvc-debug-pod> -- \
+  cp /app/data/gateway.db.backup /app/data/gateway.db
 
-# 3. Restore the database
-kubectl -n atauth exec -it <backup-pod> -- sh -c '
-  cp /backups/pre-deploy-YYYYMMDD-HHMMSS.db /data/gateway.db
-'
-
-# 4. Rollback the deployment
-kubectl -n atauth rollout undo deployment/atauth-gateway
-
-# 5. Scale back up
-kubectl -n atauth scale deployment/atauth-gateway --replicas=1
+# Rollback image and scale up
+kubectl -n atauth rollout undo deployment/atauth
+kubectl -n atauth scale deployment/atauth --replicas=1
 ```
 
-### Full Disaster Recovery
+### Restore from B2 Backup
 
-```bash
-# If everything is broken, restore from last known good state:
-
-# 1. Delete the deployment
-kubectl -n atauth delete deployment atauth-gateway
-
-# 2. Restore database from backup
-# (access the PVC directly or use a debug pod)
-
-# 3. Deploy previous known-good version
-kubectl set image deployment/atauth-gateway \
-  gateway=gitea.cloudforest-basilisk.ts.net/arcnode.xyz/atauth-gateway:v1.2.0 \
-  -n atauth
-```
-
----
-
-## Database Migration Safety
-
-The new version adds these tables (backward compatible):
-
-```sql
--- New tables (won't affect existing functionality)
-- oidc_keys
-- authorization_codes
-- refresh_tokens
-- passkey_credentials
-- mfa_totp
-- mfa_backup_codes
-- user_emails
-- email_verification_codes
-
--- Modified tables (new columns with defaults)
-- apps: client_type, client_secret, redirect_uris, etc.
-```
-
-### Migration is SAFE because:
-
-1. **New tables only** - existing tables unchanged
-2. **New columns have defaults** - existing rows work
-3. **Legacy mode supported** - old apps use `client_type='legacy'`
-4. **No breaking changes to existing API** - `/auth/*` routes unchanged
-
-### To verify schema compatibility:
-
-```bash
-# Export current schema
-kubectl -n atauth exec deploy/atauth-gateway -- \
-  sqlite3 /app/data/gateway.db ".schema" > schema-before.sql
-
-# After deployment, compare
-kubectl -n atauth exec deploy/atauth-gateway -- \
-  sqlite3 /app/data/gateway.db ".schema" > schema-after.sql
-
-diff schema-before.sql schema-after.sql
-```
+Automated backups run every 2 hours (CronJob in `backups` namespace, age-encrypted to Backblaze B2).
 
 ---
 
@@ -222,42 +136,17 @@ diff schema-before.sql schema-after.sql
 watch kubectl -n atauth get pods
 
 # Stream logs
-kubectl -n atauth logs -f deployment/atauth-gateway
+kubectl -n atauth logs -f deployment/atauth
 
 # Check events
 kubectl -n atauth get events --sort-by='.lastTimestamp'
 
 # Monitor health endpoint
-watch -n 5 'curl -s https://auth.cloudforest-basilisk.ts.net/health | jq'
+watch -n 5 'curl -s https://auth-staging.workingtitle.zip/health | jq'
 ```
 
----
+## Important Notes
 
-## Environment URLs
-
-| Environment | URL | Namespace |
-|-------------|-----|-----------|
-| Staging | https://auth-staging.cloudforest-basilisk.ts.net | atauth-staging |
-| Production | https://auth.cloudforest-basilisk.ts.net | atauth |
-
-## Quick Commands Reference
-
-```bash
-# Deploy staging
-kubectl apply -k gateway/k8s/overlays/staging
-
-# Deploy production
-kubectl apply -k gateway/k8s/overlays/production
-
-# Rollback
-kubectl -n atauth rollout undo deployment/atauth-gateway
-
-# Check status
-kubectl -n atauth get all
-
-# Logs
-kubectl -n atauth logs -f deploy/atauth-gateway
-
-# Backup now
-kubectl -n atauth create job --from=cronjob/atauth-gateway-backup manual-backup-$(date +%s)
-```
+- **Image tag caching**: k8s nodes cache `:latest` with `imagePullPolicy: IfNotPresent`. Always use a unique tag (commit SHA or descriptive name) to ensure the new image is pulled.
+- **RWO PVC**: Strategy must be `Recreate` since the SQLite PVC is ReadWriteOnce. RollingUpdate will deadlock when the new pod lands on a different node.
+- **Domain**: Must use `workingtitle.zip`, NOT `arcnode.xyz` (same-site header issue with PDS).
