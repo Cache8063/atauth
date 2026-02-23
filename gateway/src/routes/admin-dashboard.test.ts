@@ -720,6 +720,34 @@ describe('Dashboard Setup Wizard', () => {
     expect(client!.redirect_uris).toEqual(['https://abs.example.com/auth/openid/callback']);
   });
 
+  it('should strip protocol prefix from domain in wizard', async () => {
+    const csrf = await getCsrf(app, '/admin/dashboard/clients/wizard/audiobookshelf');
+
+    const res = await request(app)
+      .post('/admin/dashboard/clients/wizard/audiobookshelf')
+      .set('Cookie', adminCookie())
+      .type('form')
+      .send({
+        _csrf: csrf,
+        preset: 'audiobookshelf',
+        domain: 'https://abs.example.com',
+        id: 'abs-protocol-test',
+        name: 'ABS Protocol Test',
+        grant_types: ['authorization_code', 'refresh_token'],
+        scopes: ['openid', 'profile', 'email'],
+        auth_method: 'client_secret_basic',
+        require_pkce: 'on',
+        id_token_ttl: '3600',
+        access_token_ttl: '3600',
+        refresh_token_ttl: '604800',
+      });
+
+    expect(res.status).toBe(302);
+    const client = db.getOIDCClient('abs-protocol-test');
+    expect(client).not.toBeNull();
+    expect(client!.redirect_uris).toEqual(['https://abs.example.com/auth/openid/callback']);
+  });
+
   it('should show setup notes on created page', async () => {
     const res = await request(app)
       .get('/admin/dashboard/clients/created?id=abs&secret=abc123&preset=audiobookshelf')

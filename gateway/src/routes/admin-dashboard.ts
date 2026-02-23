@@ -13,6 +13,11 @@ import { checkAccess } from '../utils/access-check.js';
 import { generateHmacSecret } from '../utils/hmac.js';
 import { OIDC_APP_PRESETS, getPresetByKey } from '../data/oidc-presets.js';
 
+/** Strip protocol scheme (e.g. https://) from user input to prevent double-protocol in URI templates. */
+function stripScheme(input: string): string {
+  return input.replace(/^[a-z][a-z0-9+.-]*:\/\//, '').trim();
+}
+
 export function createAdminDashboardRoutes(
   db: DatabaseService,
   csrfSecret: string,
@@ -540,7 +545,7 @@ export function createAdminDashboardRoutes(
     const defaults = presetData && domain ? {
       id: presetData.suggested_client_id,
       name: presetData.name,
-      redirect_uris: presetData.redirect_uri_template.replace(/\{\{DOMAIN\}\}/g, domain),
+      redirect_uris: presetData.redirect_uri_template.replace(/\{\{DOMAIN\}\}/g, stripScheme(domain)),
       grant_types: presetData.grant_types,
       scopes: presetData.scopes,
       auth_method: presetData.token_endpoint_auth_method,
@@ -974,7 +979,7 @@ export function createAdminDashboardRoutes(
 
     // Build redirect URIs from template
     const redirect_uris = presetData.redirect_uri_template
-      .replace(/\{\{DOMAIN\}\}/g, domain.trim())
+      .replace(/\{\{DOMAIN\}\}/g, stripScheme(domain))
       .split('\n')
       .map(u => u.trim())
       .filter(u => u.length > 0);
