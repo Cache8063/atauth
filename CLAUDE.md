@@ -69,16 +69,19 @@ Protected service receives X-Auth-DID, X-Auth-Handle headers
 
 ### Deployment Process (Manual Fallback)
 ```bash
-# Build and push (from gateway/ directory)
+# Build and push (from repo root, use unique tag to avoid k8s image caching)
+TAG=$(git rev-parse --short HEAD)
 docker build --platform linux/amd64 \
-  -t registry.digitalocean.com/ghostmesh-registry/atauth:$(git rev-parse --short HEAD) \
+  -t registry.digitalocean.com/ghostmesh-registry/atauth:$TAG \
   -t registry.digitalocean.com/ghostmesh-registry/atauth:latest \
   gateway/
-docker push registry.digitalocean.com/ghostmesh-registry/atauth:$(git rev-parse --short HEAD)
+docker push registry.digitalocean.com/ghostmesh-registry/atauth:$TAG
 docker push registry.digitalocean.com/ghostmesh-registry/atauth:latest
 
-# Deploy
-kubectl rollout restart deployment/atauth -n atauth
+# Deploy with specific tag (avoids IfNotPresent caching of :latest)
+kubectl set image deployment/atauth \
+  atauth=registry.digitalocean.com/ghostmesh-registry/atauth:$TAG \
+  -n atauth
 kubectl rollout status deployment/atauth -n atauth --timeout=120s
 ```
 
@@ -91,7 +94,7 @@ Config preserved in `gateway/k8s/overlays/staging/` and `gateway/k8s/overlays/pr
 ### Admin Dashboard (Web UI)
 - **URL**: `https://apricot.workingtitle.zip/admin/login`
 - **Auth**: Admin token from Vaultwarden (sets `_atauth_admin` cookie, 24h TTL)
-- **Pages**: Overview, Origins, Access Rules, Sessions, Access Check Tool
+- **Pages**: Overview, OIDC Clients, Setup Wizard, Origins, Access Rules, Sessions, Proxy Setup, Access Check Tool
 - **CSRF**: All forms include HMAC-signed hidden tokens (1h validity)
 
 ### Admin Token
@@ -187,11 +190,17 @@ All secrets in **Vaultwarden** (LXC 120 @ vaultwarden.cloudforest-basilisk.ts.ne
 | File | Purpose |
 |------|---------|
 | `src/routes/proxy-auth.ts` | Forward-auth routes (`/auth/verify`, `/auth/login`, `/auth/callback`) + `enforceAccess` |
+| `src/routes/oidc/authorize.ts` | OIDC authorization endpoint + AT Protocol OAuth callback |
+| `src/routes/oidc/token.ts` | OIDC token exchange (auth_code + refresh_token grants) |
+| `src/routes/oidc/userinfo.ts` | OIDC userinfo endpoint (DID-to-handle resolution) |
+| `src/routes/oidc/revoke.ts` | OIDC token revocation |
 | `src/utils/proxy-auth.ts` | Cookie create/verify, ticket functions, parsing utilities |
 | `src/utils/access-check.ts` | Pure `matchHandlePattern` + `checkAccess` functions |
 | `src/routes/admin.ts` | Admin API (Bearer + cookie auth), login/logout routes |
 | `src/routes/admin-dashboard.ts` | Server-rendered HTML dashboard (all pages + CSRF) |
+| `src/data/oidc-presets.ts` | OIDC setup wizard app presets (ABS, Jellyfin, Gitea, etc.) |
 | `src/services/database.ts` | SQLite schema, migrations, all DB methods |
+| `src/services/oauth.ts` | AT Protocol OAuth client (`generateAuthUrl`, `handleCallback`) |
 | `src/types/proxy.ts` | `ProxyAccessRule`, `AccessCheckResult`, proxy config types |
 
 ### Important Notes
@@ -248,8 +257,8 @@ kubectl exec -n atauth deploy/atauth -- sqlite3 /app/data/gateway.db ".tables"
 ### Audiobookshelf
 - **Location**: LXC 107 on `pv4`
 - **Tailscale IP**: 100.115.188.60
-- **URL**: `https://audiobookshelf.cloudforest-basilisk.ts.net` (via Tailscale serve)
-- **Internal**: nginx (8080) → ABS (13378)
+- **URL**: `https://audiobookshelf.cloudforest-basilisk.ts.net` (via Tailscale serve → ABS:13378 directly)
+- **OIDC**: Configured with ATAuth (`client_id: audiobookshelf`, `authOpenIDAutoRegister: true`)
 - **SSH via pv4**: `ssh root@pv4.cloudforest-basilisk.ts.net "pct exec 107 -- <command>"`
 
 ### Vaultwarden
@@ -286,6 +295,12 @@ kubectl exec -n atauth deploy/atauth -- sqlite3 /app/data/gateway.db ".tables"
 | `GET /admin/dashboard/access` | Manage access rules (HTML) |
 | `GET /admin/dashboard/sessions` | Manage proxy sessions (HTML) |
 | `GET /admin/dashboard/check` | Access check tool (HTML) |
+| `GET /admin/dashboard/clients` | OIDC client list (HTML) |
+| `GET /admin/dashboard/clients/new` | Create OIDC client form (HTML) |
+| `GET /admin/dashboard/clients/:id/edit` | Edit OIDC client form (HTML) |
+| `GET /admin/dashboard/clients/wizard` | Setup wizard app selection (HTML) |
+| `GET /admin/dashboard/clients/wizard/:preset` | Setup wizard configure form (HTML) |
+| `GET /admin/dashboard/proxy-wizard` | Forward-auth proxy setup wizard (HTML) |
 | `GET /admin/oidc/clients` | List OIDC clients |
 | `POST /admin/oidc/clients` | Create OIDC client |
 | `GET /admin/oidc/clients/:id` | Get client details |
@@ -305,7 +320,7 @@ kubectl exec -n atauth deploy/atauth -- sqlite3 /app/data/gateway.db ".tables"
 
 ## Testing
 
-### Test Suite (233 tests)
+### Test Suite (262 tests)
 ```bash
 cd gateway
 npm run test:run     # All tests once
@@ -320,12 +335,16 @@ npm run lint         # ESLint
 | File | Tests | Coverage |
 |------|-------|----------|
 | `src/utils/access-check.test.ts` | 16 | matchHandlePattern, checkAccess evaluation |
-| `src/utils/proxy-auth.test.ts` | 16 | Cookie create/verify, tickets, parsing, admin cookie |
-| `src/routes/admin-dashboard.test.ts` | 16 | Dashboard pages, CRUD forms, CSRF, cookie auth |
-| `src/routes/admin.proxy.test.ts` | 19 | Access rules API, cookie auth login/logout |
-| `src/routes/proxy-auth.test.ts` | ~50 | Forward-auth flows, access control integration |
-| `src/services/database.proxy.test.ts` | 14 | Access rules CRUD, cascade delete, partitioning |
-| `tests/oidc-flow.test.ts` | ~80 | Full OIDC provider E2E |
+| `src/utils/proxy-auth.test.ts` | 31 | Cookie create/verify, tickets, parsing, admin cookie |
+| `src/routes/admin-dashboard.test.ts` | 37 | Dashboard pages, OIDC client CRUD, wizard, proxy wizard, CSRF |
+| `src/routes/admin.proxy.test.ts` | 32 | Access rules API, cookie auth login/logout |
+| `src/routes/auth.test.ts` | 8 | Auth redirect_uri handling, regression tests |
+| `src/routes/proxy-auth.test.ts` | 28 | Forward-auth flows, access control integration |
+| `src/services/database.proxy.test.ts` | 23 | Access rules CRUD, cascade delete, partitioning |
+| `src/services/oidc/tokens.test.ts` | 20 | OIDC token generation and verification |
+| `src/services/oidc/claims.test.ts` | 28 | UserInfo claims building, scope filtering |
+| `src/services/oidc/pkce.test.ts` | 17 | PKCE challenge/verifier generation and validation |
+| `tests/oidc-flow.test.ts` | 22 | Full OIDC provider E2E flow |
 
 ## Troubleshooting
 
@@ -356,9 +375,27 @@ ssh root@pv4.cloudforest-basilisk.ts.net "pct exec 111 -- bash -c 'systemctl res
 ```
 If still stuck, deploy manually (see Deployment Process above).
 
+### "invalid_client" on OIDC token exchange
+
+**Cause**: Client secret stored as SHA-256 hash but token endpoint compared raw secret.
+**Fixed**: `token.ts` and `revoke.ts` now hash incoming secret before comparison (`3fc67a7`).
+
+### "invalid_grant" redirect_uri mismatch on AT Protocol token exchange
+
+**Cause**: `@atproto/oauth-client` falls back to `clientMetadata.redirect_uris[0]` during token exchange. Authorization used `/oauth/callback` but exchange used `/auth/callback`.
+**Fixed**: `authorize.ts` now passes explicit redirect_uri to `handleCallback()` (`3fc67a7`).
+
+### Userinfo returns empty `preferred_username`
+
+**Cause**: `db.getUserMapping()` returns nothing for new OIDC sessions; handle defaulted to empty string.
+**Fixed**: `userinfo.ts` resolves DID to handle via `app.bsky.actor.getProfile` API (`3fc67a7`).
+
 ### Dockerfile still builds admin-ui stage
 The `admin-ui-builder` stage in the Dockerfile builds the old static admin UI. It's now unused (replaced by server-rendered dashboard) but harmless. Can be removed in a future cleanup.
 
 ## Pending Work
 - **Dependency upgrades**: nodemailer 6->8 (CVE-2025-14874), @simplewebauthn/server 10->13, uuid 9->13, better-sqlite3 11->12
 - **Dockerfile cleanup**: Remove `admin-ui-builder` stage and `admin-ui/` static files
+- **Stale deployment configs**: `gateway/tekton/` (old Tekton CI), `gateway/helm/` (unused Helm chart), `.github/` (old GitHub Actions) -- can be removed
+- **Rotate admin token**: Current placeholder `atauth-admin-token-2026-change-in-production` should be replaced with a proper random token
+- **Setup wizard bug**: Double-protocol in redirect_uri when domain input includes `https://` prefix

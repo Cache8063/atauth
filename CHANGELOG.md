@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-02-22
+
+### Added
+- **OIDC Provider**: Full OpenID Connect provider using AT Protocol OAuth as identity source
+  - Authorization endpoint with PKCE support
+  - Token endpoint (authorization_code + refresh_token grants)
+  - UserInfo endpoint with DID-to-handle resolution via AT Protocol API
+  - Token revocation endpoint
+  - JWKS endpoint with ES256 key rotation
+  - Discovery document (`/.well-known/openid-configuration`)
+- **Forward-Auth SSO Proxy**: nginx `auth_request` based single sign-on for arbitrary services
+  - Per-user DID and handle pattern access control rules
+  - Deny-overrides evaluation model
+  - Per-origin and global rule scoping
+  - HMAC-SHA256 signed session cookies with `typ` discriminator
+  - Ticket-based exchange for X-Auth-DID/X-Auth-Handle headers
+- **Admin Dashboard**: Server-rendered HTML admin UI replacing static React SPA
+  - OIDC client management (list, create, edit, delete, secret rotation)
+  - Setup wizard with presets for 10 common self-hosted apps (Audiobookshelf, Jellyfin, Nextcloud, Gitea, Immich, Grafana, WikiJS, Portainer, Outline, Mealie)
+  - Forward-auth proxy quick setup wizard with nginx/k8s config snippet generation
+  - Proxy origin management, access rule management, session management
+  - Access check dry-run tool
+  - HMAC-signed CSRF tokens on all forms
+  - Cookie-based auth (24h TTL) alongside Bearer token auth
+- **CI/CD**: Gitea Actions pipeline (test -> build -> push -> deploy to DigitalOcean k8s)
+
+### Changed
+- **Infrastructure**: Migrated from local k3s (Proxmox) to DigitalOcean Managed Kubernetes
+- **Registry**: Moved from Gitea container registry to DigitalOcean Container Registry
+- **Deployment strategy**: Recreate (RWO PVC for SQLite)
+- **Test suite**: Expanded from ~50 to 262 tests across 11 test files
+
+### Fixed
+- OIDC token endpoint: hash incoming client secret before comparing against stored SHA-256 hash
+- OIDC authorize: pass explicit redirect_uri to AT Protocol OAuth callback (prevents `@atproto/oauth-client` fallback mismatch)
+- OIDC userinfo: resolve DID to handle via `app.bsky.actor.getProfile` when no cached mapping exists
+- Legacy `/auth/init`: separate OAuth redirect_uri from downstream app callback URL
+- Register OIDC and forward-auth callback URIs in NodeOAuthClient metadata
+
+### Security
+- Client secrets stored as SHA-256 hashes (not plaintext)
+- Constant-time comparison for all secret verification
+- PKCE required for OIDC clients (configurable per-client)
+- Access control deny-overrides: deny rules always win regardless of order
+
 ## [1.3.0] - 2025-12-15
 
 ### Changed
@@ -69,6 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Input validation and sanitization
 - Rate limiting on all endpoints
 
+[2.0.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v1.3.0...main
 [1.3.0]: https://github.com/Cache8063/atauth/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Cache8063/atauth/compare/v1.0.0...v1.2.0
 [1.0.0]: https://github.com/Cache8063/atauth/releases/tag/v1.0.0
