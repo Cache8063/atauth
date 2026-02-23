@@ -440,7 +440,10 @@ export function createAuthorizeRouter(
       callbackParams.set('state', state);
       if (iss) callbackParams.set('iss', iss);
 
-      const callbackResult = await oauthService.handleCallback(callbackParams);
+      const callbackResult = await oauthService.handleCallback(
+        callbackParams,
+        `${oidcService.issuer}/oauth/callback`
+      );
       if (!callbackResult) {
         return res.status(500).json({
           error: 'server_error',
