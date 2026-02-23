@@ -25,13 +25,14 @@ services:
       # CORS
       - CORS_ORIGINS=https://example.com,http://localhost:3000
 
-      # Admin token (generate with: openssl rand -hex 32)
-      - ADMIN_TOKEN=${ADMIN_TOKEN:-changeme}
+      # Admin token (REQUIRED - generate with: openssl rand -hex 32)
+      - ADMIN_TOKEN=${ADMIN_TOKEN:?Set ADMIN_TOKEN}
 
       # OIDC configuration
       - OIDC_ENABLED=true
       - OIDC_ISSUER=https://auth.example.com
-      - OIDC_KEY_SECRET=${OIDC_KEY_SECRET:-change-me-in-production-32-bytes!}
+      # REQUIRED when OIDC_ENABLED=true (generate with: openssl rand -hex 32)
+      - OIDC_KEY_SECRET=${OIDC_KEY_SECRET:?Set OIDC_KEY_SECRET}
       - OIDC_KEY_ALGORITHM=ES256
 
       # Passkey/WebAuthn
@@ -43,7 +44,8 @@ services:
       # MFA
       - MFA_ENABLED=true
       - MFA_TOTP_ISSUER=ATAuth
-      - MFA_ENCRYPTION_KEY=${MFA_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      # REQUIRED when MFA is enabled (generate with: openssl rand -hex 64)
+      - MFA_ENCRYPTION_KEY=${MFA_ENCRYPTION_KEY:?Set MFA_ENCRYPTION_KEY}
 
       # Email (disabled by default)
       - EMAIL_ENABLED=false

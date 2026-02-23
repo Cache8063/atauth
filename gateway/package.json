@@ -1,6 +1,6 @@
 {
   "name": "atauth-gateway",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "AT Protocol OAuth gateway for application authentication",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -37,7 +37,7 @@
     "cors": "^2.8.5",
     "express": "^5.0.0",
     "helmet": "^8.0.0",
-    "nodemailer": "^6.9.9",
+    "nodemailer": "^7.0.13",
     "otpauth": "^9.2.1",
     "qrcode": "^1.5.3",
     "uuid": "^9.0.0"

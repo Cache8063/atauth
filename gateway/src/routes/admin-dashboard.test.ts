@@ -482,7 +482,8 @@ describe('Dashboard OIDC Clients', () => {
     expect(res.status).toBe(302);
     expect(res.headers.location).toContain('/admin/dashboard/clients/created');
     expect(res.headers.location).toContain('id=myapp');
-    expect(res.headers.location).toContain('secret=');
+    expect(res.headers.location).toContain('flash=');
+    expect(res.headers.location).not.toContain('secret=');
 
     // Verify in DB
     const client = db.getOIDCClient('myapp');
@@ -492,16 +493,78 @@ describe('Dashboard OIDC Clients', () => {
     expect(client!.require_pkce).toBe(true);
   });
 
-  it('should display secret on created page', async () => {
+  it('should display secret on created page via flash', async () => {
+    const csrf = await getCsrf(app, '/admin/dashboard/clients/new');
+
+    // Create a client to get a flash-based redirect
+    const createRes = await request(app)
+      .post('/admin/dashboard/clients/new')
+      .set('Cookie', adminCookie())
+      .type('form')
+      .send({
+        _csrf: csrf,
+        id: 'flash-test',
+        name: 'Flash Test',
+        redirect_uris_text: 'https://flash.example.com/callback',
+        grant_types: ['authorization_code'],
+        scopes: ['openid'],
+        auth_method: 'client_secret_basic',
+        require_pkce: 'on',
+        id_token_ttl: '3600',
+        access_token_ttl: '3600',
+        refresh_token_ttl: '604800',
+      });
+
+    expect(createRes.status).toBe(302);
+    const redirectUrl = createRes.headers.location as string;
+
+    // Follow the redirect to display the secret
+    const queryString = redirectUrl.split('?')[1];
     const res = await request(app)
-      .get('/admin/dashboard/clients/created?id=test&secret=abc123hex')
+      .get(`/admin/dashboard/clients/created?${queryString}`)
       .set('Cookie', adminCookie());
 
     expect(res.status).toBe(200);
     expect(res.text).toContain('Client Created');
-    expect(res.text).toContain('abc123hex');
     expect(res.text).toContain('This secret will not be shown again');
     expect(res.text).toContain('Discovery URL');
+  });
+
+  it('should reject reused flash ID', async () => {
+    const csrf = await getCsrf(app, '/admin/dashboard/clients/new');
+
+    const createRes = await request(app)
+      .post('/admin/dashboard/clients/new')
+      .set('Cookie', adminCookie())
+      .type('form')
+      .send({
+        _csrf: csrf,
+        id: 'flash-reuse-test',
+        name: 'Flash Reuse Test',
+        redirect_uris_text: 'https://reuse.example.com/callback',
+        grant_types: ['authorization_code'],
+        scopes: ['openid'],
+        auth_method: 'client_secret_basic',
+        id_token_ttl: '3600',
+        access_token_ttl: '3600',
+        refresh_token_ttl: '604800',
+      });
+
+    const redirectUrl = createRes.headers.location as string;
+    const queryString = redirectUrl.split('?')[1];
+
+    // First access should work
+    const res1 = await request(app)
+      .get(`/admin/dashboard/clients/created?${queryString}`)
+      .set('Cookie', adminCookie());
+    expect(res1.status).toBe(200);
+
+    // Second access should redirect (flash consumed)
+    const res2 = await request(app)
+      .get(`/admin/dashboard/clients/created?${queryString}`)
+      .set('Cookie', adminCookie());
+    expect(res2.status).toBe(302);
+    expect(res2.headers.location).toBe('/admin/dashboard/clients');
   });
 
   it('should reject duplicate client ID', async () => {
@@ -608,7 +671,8 @@ describe('Dashboard OIDC Clients', () => {
     expect(res.status).toBe(302);
     expect(res.headers.location).toContain('/admin/dashboard/clients/created');
     expect(res.headers.location).toContain('rotated=1');
-    expect(res.headers.location).toContain('secret=');
+    expect(res.headers.location).toContain('flash=');
+    expect(res.headers.location).not.toContain('secret=');
 
     // Verify secret changed
     const newClient = db.getOIDCClient('test-app');
@@ -749,8 +813,34 @@ describe('Dashboard Setup Wizard', () => {
   });
 
   it('should show setup notes on created page', async () => {
+    const csrf = await getCsrf(app, '/admin/dashboard/clients/wizard/audiobookshelf');
+
+    // Create via wizard to get flash-based redirect with preset
+    const createRes = await request(app)
+      .post('/admin/dashboard/clients/wizard/audiobookshelf')
+      .set('Cookie', adminCookie())
+      .type('form')
+      .send({
+        _csrf: csrf,
+        preset: 'audiobookshelf',
+        domain: 'abs-notes.example.com',
+        id: 'abs-notes',
+        name: 'ABS Notes Test',
+        grant_types: ['authorization_code', 'refresh_token'],
+        scopes: ['openid', 'profile', 'email'],
+        auth_method: 'client_secret_basic',
+        require_pkce: 'on',
+        id_token_ttl: '3600',
+        access_token_ttl: '3600',
+        refresh_token_ttl: '604800',
+      });
+
+    expect(createRes.status).toBe(302);
+    const redirectUrl = createRes.headers.location as string;
+    const queryString = redirectUrl.split('?')[1];
+
     const res = await request(app)
-      .get('/admin/dashboard/clients/created?id=abs&secret=abc123&preset=audiobookshelf')
+      .get(`/admin/dashboard/clients/created?${queryString}`)
       .set('Cookie', adminCookie());
 
     expect(res.status).toBe(200);

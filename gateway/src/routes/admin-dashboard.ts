@@ -24,6 +24,27 @@ export function createAdminDashboardRoutes(
 ): Router {
   const router = Router();
 
+  // Short-lived store for one-time secret display (avoids secret in URL)
+  const secretFlash = new Map<string, { secret: string; expires: number }>();
+
+  function storeFlash(secret: string): string {
+    const flashId = crypto.randomBytes(16).toString('hex');
+    secretFlash.set(flashId, { secret, expires: Date.now() + 60_000 });
+    // Sweep expired entries
+    for (const [k, v] of secretFlash) {
+      if (v.expires < Date.now()) secretFlash.delete(k);
+    }
+    return flashId;
+  }
+
+  function consumeFlash(flashId: string): string | null {
+    const entry = secretFlash.get(flashId);
+    if (!entry) return null;
+    secretFlash.delete(flashId);
+    if (entry.expires < Date.now()) return null;
+    return entry.secret;
+  }
+
   // ===== CSRF Protection =====
 
   function generateCsrfToken(): string {
@@ -625,7 +646,8 @@ export function createAdminDashboardRoutes(
       refresh_token_ttl_seconds: parseInt(refresh_token_ttl, 10) || 604800,
     });
 
-    const params = new URLSearchParams({ id, secret: clientSecret });
+    const flashId = storeFlash(clientSecret);
+    const params = new URLSearchParams({ id, flash: flashId });
     if (preset) params.set('preset', preset);
     res.redirect(`/admin/dashboard/clients/created?${params.toString()}`);
   });
@@ -633,7 +655,8 @@ export function createAdminDashboardRoutes(
   // --- Secret Display (one-time) ---
 
   router.get('/clients/created', (req: Request, res: Response) => {
-    const { id, secret, preset, rotated } = req.query as Record<string, string>;
+    const { id, flash, preset, rotated } = req.query as Record<string, string>;
+    const secret = flash ? consumeFlash(flash) : null;
     if (!id || !secret) {
       return res.redirect('/admin/dashboard/clients');
     }
@@ -825,7 +848,8 @@ export function createAdminDashboardRoutes(
     const clientSecretHash = crypto.createHash('sha256').update(clientSecret).digest('hex');
     db.updateOIDCClientSecret(clientId, clientSecretHash);
 
-    const params = new URLSearchParams({ id: clientId, secret: clientSecret, rotated: '1' });
+    const flashId = storeFlash(clientSecret);
+    const params = new URLSearchParams({ id: clientId, flash: flashId, rotated: '1' });
     res.redirect(`/admin/dashboard/clients/created?${params.toString()}`);
   });
 
@@ -1007,7 +1031,8 @@ export function createAdminDashboardRoutes(
       refresh_token_ttl_seconds: parseInt(refresh_token_ttl, 10) || presetData.refresh_token_ttl_seconds,
     });
 
-    const params = new URLSearchParams({ id, secret: clientSecret, preset: preset || req.params.preset });
+    const flashId = storeFlash(clientSecret);
+    const params = new URLSearchParams({ id, flash: flashId, preset: preset || req.params.preset });
     res.redirect(`/admin/dashboard/clients/created?${params.toString()}`);
   });
 
