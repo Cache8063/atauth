@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-02-23
+
+### Security
+
+- Removed hardcoded fallback secrets from config; OIDC_KEY_SECRET, MFA_ENCRYPTION_KEY, and FORWARD_AUTH_SESSION_SECRET are now required when their features are enabled
+- Fixed XSS in OIDC login page: all user-controlled values (clientName, state, authCode, errorMessage) are now HTML-escaped
+- Client secrets no longer appear in URL query parameters; uses one-time flash tokens instead
+- Updated nodemailer from v6 to v7 (SES transport security fix)
+- Updated docker-compose.yaml to use required variable syntax (`${VAR:?msg}`) for secrets
+- Updated .env.example with all current configuration options
+
 ## [2.0.1] - 2026-02-23
 
 ### Fixed
