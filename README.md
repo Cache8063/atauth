@@ -37,14 +37,25 @@ Any app that supports OpenID Connect can use ATAuth. No custom integration neede
 
 ```bash
 git clone https://github.com/Cache8063/atauth.git
-cd atauth
+cd atauth/gateway
 cp .env.example .env
-echo "ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env
+```
 
+Edit `.env` and fill in the required secrets (generate with `openssl rand -hex 32`):
+
+```env
+ADMIN_TOKEN=<your-admin-token>
+OIDC_KEY_SECRET=<your-oidc-key-secret>
+MFA_ENCRYPTION_KEY=<your-64-hex-char-key>  # openssl rand -hex 32
+```
+
+Then start:
+
+```bash
 docker compose up -d
 ```
 
-Then open the admin dashboard at `http://localhost:3100/admin/login` and use the setup wizard to register your first app.
+Open the admin dashboard at `https://your-domain/admin/login` and use the setup wizard to register your first app.
 
 ## Supported Apps
 
@@ -120,11 +131,15 @@ With a self-hosted PDS, ATAuth becomes a fully independent auth system:
 
 ## Security
 
+- No hardcoded secrets -- all sensitive config validated at startup
 - Client secrets stored as SHA-256 hashes
+- One-time flash tokens for secret display (never in URLs)
 - PKCE support (configurable per-client)
 - Constant-time comparison for all secret verification
+- HTML escaping on all server-rendered pages
 - HMAC-signed CSRF tokens on all dashboard forms
 - Rate limiting on auth endpoints
+- CSP with per-request nonces for inline scripts
 - WAF-compatible (Cloudflare Managed Ruleset + OWASP)
 
 ## Documentation
