@@ -53,7 +53,7 @@ const config = {
   oidc: {
     enabled: process.env.OIDC_ENABLED === 'true',
     issuer: process.env.OIDC_ISSUER || 'https://auth.example.com',
-    keySecret: process.env.OIDC_KEY_SECRET || 'change-me-in-production-32-bytes!',
+    keySecret: process.env.OIDC_KEY_SECRET,
     keyAlgorithm: (process.env.OIDC_KEY_ALGORITHM || 'ES256') as 'ES256' | 'RS256',
   },
 
@@ -70,7 +70,7 @@ const config = {
     enabled: process.env.MFA_ENABLED !== 'false', // Enabled by default
     issuer: process.env.MFA_TOTP_ISSUER || 'ATAuth',
     // 32-byte hex encryption key for TOTP secrets (64 hex characters)
-    encryptionKey: process.env.MFA_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    encryptionKey: process.env.MFA_ENCRYPTION_KEY,
     backupCodesCount: parseInt(process.env.MFA_BACKUP_CODES_COUNT || '10', 10),
   },
 
@@ -93,7 +93,7 @@ const config = {
   // Forward-auth proxy configuration
   forwardAuth: {
     enabled: process.env.FORWARD_AUTH_ENABLED === 'true',
-    sessionSecret: process.env.FORWARD_AUTH_SESSION_SECRET || 'change-me-in-production-32-bytes!',
+    sessionSecret: process.env.FORWARD_AUTH_SESSION_SECRET,
     sessionTtl: parseInt(process.env.FORWARD_AUTH_SESSION_TTL || '604800', 10), // 7 days
     proxyCookieTtl: parseInt(process.env.FORWARD_AUTH_PROXY_COOKIE_TTL || '86400', 10), // 24h
   },
@@ -101,6 +101,23 @@ const config = {
 
 async function main(): Promise<void> {
   console.log('Starting ATAuth Gateway...');
+
+  // Validate required secrets when features are enabled
+  const missing: string[] = [];
+  if (config.oidc.enabled && !config.oidc.keySecret) {
+    missing.push('OIDC_KEY_SECRET is required when OIDC_ENABLED=true');
+  }
+  if (config.mfa.enabled && !config.mfa.encryptionKey) {
+    missing.push('MFA_ENCRYPTION_KEY is required when MFA is enabled (set MFA_ENABLED=false to disable)');
+  }
+  if (config.forwardAuth.enabled && !config.forwardAuth.sessionSecret) {
+    missing.push('FORWARD_AUTH_SESSION_SECRET is required when FORWARD_AUTH_ENABLED=true');
+  }
+  if (missing.length > 0) {
+    console.error('Configuration error:');
+    for (const msg of missing) console.error(`  - ${msg}`);
+    process.exit(1);
+  }
 
   // Ensure data directory exists
   const dataDir = path.dirname(config.dbPath);
@@ -133,7 +150,7 @@ async function main(): Promise<void> {
   if (config.oidc.enabled) {
     oidcService = new OIDCService(db, {
       issuer: config.oidc.issuer,
-      keySecret: config.oidc.keySecret,
+      keySecret: config.oidc.keySecret!,
       keyAlgorithm: config.oidc.keyAlgorithm,
     });
     try {
@@ -160,7 +177,7 @@ async function main(): Promise<void> {
   if (config.mfa.enabled) {
     mfaService = new MFAService(db, {
       issuer: config.mfa.issuer,
-      encryptionKey: config.mfa.encryptionKey,
+      encryptionKey: config.mfa.encryptionKey!,
       backupCodesCount: config.mfa.backupCodesCount,
     });
     console.log('MFA service initialized');
@@ -230,7 +247,7 @@ async function main(): Promise<void> {
   // /auth/verify is called by nginx auth_request on every subrequest from a single
   // pod IP, so per-IP rate limiting would block legitimate traffic.
   if (config.forwardAuth.enabled) {
-    const proxyRouter = createProxyAuthRoutes(db, oauth, config.forwardAuth, config.oidc.issuer);
+    const proxyRouter = createProxyAuthRoutes(db, oauth, { ...config.forwardAuth, sessionSecret: config.forwardAuth.sessionSecret! }, config.oidc.issuer);
     // Mount entire proxy router at /auth -- no rate limit on /auth/verify
     app.use('/auth', proxyRouter);
     console.log('Forward-auth proxy enabled');

@@ -19,9 +19,18 @@ export function createAuthorizeRouter(
 ): Router {
   const router = Router();
 
+  function esc(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function renderLoginPage(clientName: string, authCode: string, state: string, errorMessage?: string, nonce?: string): string {
     const errorHtml = errorMessage
-      ? `<div class="error" style="display:block">${errorMessage}</div>`
+      ? `<div class="error" style="display:block">${esc(errorMessage)}</div>`
       : '<div class="error" id="error"></div>';
     return `
 <!DOCTYPE html>
@@ -105,17 +114,17 @@ export function createAuthorizeRouter(
     <div class="logo">&#128274;</div>
     <h1>Sign in with ATAuth</h1>
     <p class="subtitle">Use your Bluesky or AT Protocol identity</p>
-    <div class="client-info">Signing in to <strong>${clientName}</strong></div>
+    <div class="client-info">Signing in to <strong>${esc(clientName)}</strong></div>
     ${errorHtml}
     <form id="loginForm" action="/oauth/authorize/login" method="POST">
-      <input type="hidden" name="auth_code" value="${authCode}">
-      <input type="hidden" name="state" value="${state}">
+      <input type="hidden" name="auth_code" value="${esc(authCode)}">
+      <input type="hidden" name="state" value="${esc(state)}">
       <label for="handle">Your Handle</label>
       <input type="text" id="handle" name="handle" placeholder="you.bsky.social" autocomplete="username" autocapitalize="none" spellcheck="false" required>
       <p class="hint">Enter your Bluesky handle or custom domain</p>
       <button type="submit" id="submitBtn">Continue</button>
     </form>
-    <p class="privacy">Bluesky will ask to authorize broad access — this is a limitation of the AT&nbsp;Protocol OAuth standard. <strong>${clientName}</strong> only reads your identity (handle). It will never post, follow, or access your data.</p>
+    <p class="privacy">Bluesky will ask to authorize broad access — this is a limitation of the AT&nbsp;Protocol OAuth standard. <strong>${esc(clientName)}</strong> only reads your identity (handle). It will never post, follow, or access your data.</p>
   </div>
   <script${nonce ? ` nonce="${nonce}"` : ''}>
     var form = document.getElementById('loginForm');
