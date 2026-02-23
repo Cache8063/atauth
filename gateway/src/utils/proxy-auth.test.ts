@@ -1,7 +1,7 @@
 /**
  * Forward-Auth Proxy Utilities Tests
  */
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createSessionCookie,
   verifySessionCookie,

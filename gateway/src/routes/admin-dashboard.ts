@@ -319,7 +319,7 @@ export function createAdminDashboardRoutes(
         description: description || null,
       });
       res.redirect('/admin/dashboard/access?msg=Rule+added');
-    } catch (e) {
+    } catch (_e) {
       res.redirect('/admin/dashboard/access?msg=Failed+to+add+rule');
     }
   });
