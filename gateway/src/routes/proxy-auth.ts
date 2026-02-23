@@ -482,7 +482,7 @@ function renderProxyLoginPage(authRequestId: string, nonce?: string, errorMessag
 </html>`;
 }
 
-function renderForbiddenPage(nonce?: string): string {
+function renderForbiddenPage(_nonce?: string): string {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -501,7 +501,7 @@ function renderForbiddenPage(nonce?: string): string {
 </html>`;
 }
 
-function renderAccessDeniedPage(nonce?: string): string {
+function renderAccessDeniedPage(_nonce?: string): string {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -520,7 +520,7 @@ function renderAccessDeniedPage(nonce?: string): string {
 </html>`;
 }
 
-function renderErrorPage(title: string, message: string, nonce?: string): string {
+function renderErrorPage(title: string, message: string, _nonce?: string): string {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -539,7 +539,7 @@ function renderErrorPage(title: string, message: string, nonce?: string): string
 </html>`;
 }
 
-function renderLoggedOutPage(nonce?: string): string {
+function renderLoggedOutPage(_nonce?: string): string {
   return `
 <!DOCTYPE html>
 <html lang="en">

@@ -1,7 +1,7 @@
 /**
  * Admin Proxy API Tests
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import crypto from 'crypto';
