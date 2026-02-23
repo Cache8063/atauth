@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: atauth
-  labels:
-    app.kubernetes.io/name: atauth
-    app.kubernetes.io/component: identity
