@@ -12,15 +12,24 @@ ATAuth provides OIDC-based authentication for your homelab using AT Protocol ide
 
 ```bash
 git clone https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth.git
-cd atauth
+cd atauth/gateway
 cp .env.example .env
+```
 
-# Generate admin token
-echo "ADMIN_TOKEN=$(openssl rand -hex 32)" >> .env
+Edit `.env` with your configuration. At minimum, set these required secrets:
 
-# Set your public URL
-# Edit .env: OAUTH_CLIENT_ID and OAUTH_REDIRECT_URI
+```bash
+# Generate and paste each value
+openssl rand -hex 32  # for ADMIN_TOKEN
+openssl rand -hex 32  # for OIDC_KEY_SECRET
+openssl rand -hex 32  # for MFA_ENCRYPTION_KEY (produces 64 hex chars)
+```
 
+Also update `OAUTH_CLIENT_ID`, `OAUTH_REDIRECT_URI`, `OIDC_ISSUER`, and `WEBAUTHN_*` to match your domain.
+
+Then start:
+
+```bash
 docker compose up -d
 ```
 
@@ -178,8 +187,18 @@ docker run --rm -v atauth_atauth-data:/data -v $(pwd):/backup alpine \
 
 ## Updating
 
+Using the pre-built image from GHCR:
+
 ```bash
-docker compose pull
+docker pull ghcr.io/cache8063/atauth-gateway:latest
+docker compose up -d
+```
+
+Or if building locally:
+
+```bash
+git pull
+docker compose build
 docker compose up -d
 ```
 
