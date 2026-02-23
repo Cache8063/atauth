@@ -43,28 +43,37 @@ export function createUserInfoRouter(db: DatabaseService, oidcService: OIDCServi
       // Get scopes from the token
       const scopes = parseScopes(claims.scope);
 
+      // Resolve the user's handle from mappings or AT Protocol API
+      let handle = '';
+
+      // Try to get handle from sessions or mappings first
+      const mapping = db.getUserMapping(claims.sub, claims.client_id);
+      if (mapping && mapping.handle) {
+        handle = mapping.handle;
+      } else {
+        // Resolve DID to handle via AT Protocol API
+        try {
+          const response = await fetch(
+            `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(claims.sub)}`
+          );
+          if (response.ok) {
+            const data = (await response.json()) as { handle: string };
+            handle = data.handle;
+          }
+        } catch {
+          // Fall back to DID as handle
+          handle = claims.sub;
+        }
+      }
+
       // Build user info based on scopes
       const userInfo = buildUserInfo(
         {
           did: claims.sub,
-          handle: '', // We need to look this up
+          handle,
         },
         scopes
       );
-
-      // Try to get additional user info from sessions or mappings
-      const mapping = db.getUserMapping(claims.sub, claims.client_id);
-      if (mapping && mapping.handle) {
-        const enhancedUserInfo = buildUserInfo(
-          {
-            did: claims.sub,
-            handle: mapping.handle,
-          },
-          scopes
-        );
-        res.json(enhancedUserInfo);
-        return;
-      }
 
       // If we have email scope, try to get verified email
       if (scopes.includes('email')) {

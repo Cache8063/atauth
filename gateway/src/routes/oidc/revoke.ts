@@ -72,8 +72,9 @@ export function createRevokeRouter(db: DatabaseService): Router {
             return;
           }
 
-          const expectedSecret = client.client_secret;
-          if (!expectedSecret || !crypto.timingSafeEqual(Buffer.from(clientSecret), Buffer.from(expectedSecret))) {
+          const expectedHash = client.client_secret;
+          const incomingHash = crypto.createHash('sha256').update(clientSecret).digest('hex');
+          if (!expectedHash || !crypto.timingSafeEqual(Buffer.from(incomingHash), Buffer.from(expectedHash))) {
             res.status(401).json({
               error: 'invalid_client',
               error_description: 'Invalid client credentials',
