@@ -85,21 +85,21 @@ describe('Auth Ticket', () => {
   it('should create and verify an auth ticket', () => {
     const ticket = createAuthTicket(
       'session-789', 'did:plc:abc123', 'user.bsky.social',
-      'https://search.arcnode.xyz', TEST_SECRET,
+      'https://search.example.com', TEST_SECRET,
     );
     const result = verifyAuthTicket(ticket, TEST_SECRET);
     expect(result).not.toBeNull();
     expect(result!.sid).toBe('session-789');
     expect(result!.did).toBe('did:plc:abc123');
     expect(result!.handle).toBe('user.bsky.social');
-    expect(result!.origin).toBe('https://search.arcnode.xyz');
+    expect(result!.origin).toBe('https://search.example.com');
   });
 
   it('should reject an expired ticket', () => {
     vi.useFakeTimers();
     const ticket = createAuthTicket(
       'session-789', 'did:plc:abc123', 'user.bsky.social',
-      'https://search.arcnode.xyz', TEST_SECRET,
+      'https://search.example.com', TEST_SECRET,
     );
     // Advance past 60s expiry
     vi.advanceTimersByTime(61 * 1000);
@@ -111,7 +111,7 @@ describe('Auth Ticket', () => {
   it('should reject a ticket with wrong origin', () => {
     const ticket = createAuthTicket(
       'session-789', 'did:plc:abc123', 'user.bsky.social',
-      'https://search.arcnode.xyz', TEST_SECRET,
+      'https://search.example.com', TEST_SECRET,
     );
     const result = verifyAuthTicket(ticket, TEST_SECRET, 'https://evil.example.com');
     expect(result).toBeNull();
@@ -120,9 +120,9 @@ describe('Auth Ticket', () => {
   it('should accept a ticket with matching expected origin', () => {
     const ticket = createAuthTicket(
       'session-789', 'did:plc:abc123', 'user.bsky.social',
-      'https://search.arcnode.xyz', TEST_SECRET,
+      'https://search.example.com', TEST_SECRET,
     );
-    const result = verifyAuthTicket(ticket, TEST_SECRET, 'https://search.arcnode.xyz');
+    const result = verifyAuthTicket(ticket, TEST_SECRET, 'https://search.example.com');
     expect(result).not.toBeNull();
     expect(result!.sid).toBe('session-789');
   });
@@ -130,7 +130,7 @@ describe('Auth Ticket', () => {
   it('should reject a tampered ticket', () => {
     const ticket = createAuthTicket(
       'session-789', 'did:plc:abc123', 'user.bsky.social',
-      'https://search.arcnode.xyz', TEST_SECRET,
+      'https://search.example.com', TEST_SECRET,
     );
     const tampered = ticket.slice(0, -1) + 'x';
     const result = verifyAuthTicket(tampered, TEST_SECRET);
@@ -164,11 +164,11 @@ describe('parseCookies', () => {
 });
 
 describe('isAllowedRedirect', () => {
-  const allowed = ['https://search.arcnode.xyz', 'https://element.arcnode.xyz'];
+  const allowed = ['https://search.example.com', 'https://element.example.com'];
 
   it('should allow a URL with an allowed origin', () => {
-    expect(isAllowedRedirect('https://search.arcnode.xyz/some/path', allowed)).toBe(true);
-    expect(isAllowedRedirect('https://element.arcnode.xyz/', allowed)).toBe(true);
+    expect(isAllowedRedirect('https://search.example.com/some/path', allowed)).toBe(true);
+    expect(isAllowedRedirect('https://element.example.com/', allowed)).toBe(true);
   });
 
   it('should reject a URL with a disallowed origin', () => {
@@ -180,17 +180,17 @@ describe('isAllowedRedirect', () => {
   });
 
   it('should reject a URL with different port', () => {
-    expect(isAllowedRedirect('https://search.arcnode.xyz:8443/path', allowed)).toBe(false);
+    expect(isAllowedRedirect('https://search.example.com:8443/path', allowed)).toBe(false);
   });
 
   it('should reject a URL with different scheme', () => {
-    expect(isAllowedRedirect('http://search.arcnode.xyz/path', allowed)).toBe(false);
+    expect(isAllowedRedirect('http://search.example.com/path', allowed)).toBe(false);
   });
 });
 
 describe('extractOrigin', () => {
   it('should extract origin from a full URL', () => {
-    expect(extractOrigin('https://search.arcnode.xyz/some/path?q=test')).toBe('https://search.arcnode.xyz');
+    expect(extractOrigin('https://search.example.com/some/path?q=test')).toBe('https://search.example.com');
   });
 
   it('should return null for invalid URL', () => {

@@ -159,10 +159,8 @@ describe('POST /oauth/authorize/passkey', () => {
 
   it('should return 400 for already-used auth code', async () => {
     createPendingAuthCode(db, 'used-code');
-    // Mark it as used
+    // Mark it as used via raw SQL since there's no direct method
     db.updateAuthorizationCodeUser('used-code', 'did:plc:old', 'old.bsky.social');
-    const authData = db.getAuthorizationCode('used-code');
-    // Manually mark as used via raw SQL since there's no direct method
     db['db'].prepare('UPDATE authorization_codes SET used = 1 WHERE code = ?').run('used-code');
 
     const res = await request(app)

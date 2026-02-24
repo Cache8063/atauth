@@ -65,10 +65,10 @@ describe('Admin Proxy Origins', () => {
     const res = await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://search.arcnode.xyz', name: 'SearXNG' });
+      .send({ origin: 'https://search.example.com', name: 'SearXNG' });
 
     expect(res.status).toBe(201);
-    expect(res.body.origin).toBe('https://search.arcnode.xyz');
+    expect(res.body.origin).toBe('https://search.example.com');
     expect(res.body.name).toBe('SearXNG');
     expect(res.body.id).toBeGreaterThan(0);
   });
@@ -95,7 +95,7 @@ describe('Admin Proxy Origins', () => {
     const res = await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://search.arcnode.xyz/path', name: 'Bad' });
+      .send({ origin: 'https://search.example.com/path', name: 'Bad' });
 
     expect(res.status).toBe(400);
   });
@@ -104,12 +104,12 @@ describe('Admin Proxy Origins', () => {
     await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://search.arcnode.xyz', name: 'SearXNG' });
+      .send({ origin: 'https://search.example.com', name: 'SearXNG' });
 
     const res = await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://search.arcnode.xyz', name: 'Duplicate' });
+      .send({ origin: 'https://search.example.com', name: 'Duplicate' });
 
     expect(res.status).toBe(409);
   });
@@ -118,11 +118,11 @@ describe('Admin Proxy Origins', () => {
     await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://search.arcnode.xyz', name: 'SearXNG' });
+      .send({ origin: 'https://search.example.com', name: 'SearXNG' });
     await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://element.arcnode.xyz', name: 'Element' });
+      .send({ origin: 'https://element.example.com', name: 'Element' });
 
     const res = await request(app)
       .get('/admin/proxy/origins')
@@ -136,7 +136,7 @@ describe('Admin Proxy Origins', () => {
     const created = await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://search.arcnode.xyz', name: 'SearXNG' });
+      .send({ origin: 'https://search.example.com', name: 'SearXNG' });
 
     const res = await request(app)
       .delete(`/admin/proxy/origins/${created.body.id}`)
@@ -246,13 +246,13 @@ describe('Admin Access Rules API', () => {
         origin_id: null,
         rule_type: 'allow',
         subject_type: 'handle_pattern',
-        subject_value: '*.arcnode.xyz',
+        subject_value: '*.example.com',
         description: 'PDS users',
       });
 
     expect(res.status).toBe(201);
     expect(res.body.rule_type).toBe('allow');
-    expect(res.body.subject_value).toBe('*.arcnode.xyz');
+    expect(res.body.subject_value).toBe('*.example.com');
   });
 
   it('should create a deny rule', async () => {
@@ -362,7 +362,7 @@ describe('Admin Access Rules API', () => {
     const origin = await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://search.arcnode.xyz', name: 'SearXNG' });
+      .send({ origin: 'https://search.example.com', name: 'SearXNG' });
 
     await request(app)
       .post('/admin/proxy/access')
@@ -380,7 +380,7 @@ describe('Admin Access Rules API', () => {
         origin_id: null,
         rule_type: 'allow',
         subject_type: 'handle_pattern',
-        subject_value: '*.arcnode.xyz',
+        subject_value: '*.example.com',
       });
 
     const res = await request(app)
@@ -397,7 +397,7 @@ describe('Admin Access Rules API', () => {
     const origin = await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://search.arcnode.xyz', name: 'SearXNG' });
+      .send({ origin: 'https://search.example.com', name: 'SearXNG' });
 
     await request(app)
       .post('/admin/proxy/access')
@@ -406,13 +406,13 @@ describe('Admin Access Rules API', () => {
         origin_id: null,
         rule_type: 'allow',
         subject_type: 'handle_pattern',
-        subject_value: '*.arcnode.xyz',
+        subject_value: '*.example.com',
       });
 
     const allowed = await request(app)
       .post('/admin/proxy/access/check')
       .set(authHeader())
-      .send({ did: 'did:plc:test', handle: 'bkb.arcnode.xyz', origin_id: origin.body.id });
+      .send({ did: 'did:plc:test', handle: 'user.example.com', origin_id: origin.body.id });
 
     expect(allowed.status).toBe(200);
     expect(allowed.body.allowed).toBe(true);
@@ -430,7 +430,7 @@ describe('Admin Access Rules API', () => {
     const origin = await request(app)
       .post('/admin/proxy/origins')
       .set(authHeader())
-      .send({ origin: 'https://search.arcnode.xyz', name: 'SearXNG' });
+      .send({ origin: 'https://search.example.com', name: 'SearXNG' });
 
     const res = await request(app)
       .post('/admin/proxy/access/check')

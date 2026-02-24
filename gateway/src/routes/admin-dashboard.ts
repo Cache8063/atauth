@@ -147,7 +147,7 @@ export function createAdminDashboardRoutes(
           <input type="hidden" name="_csrf" value="${csrf}">
           <div class="form-group">
             <label for="origin">Origin URL</label>
-            <input type="url" id="origin" name="origin" placeholder="https://search.arcnode.xyz" required>
+            <input type="url" id="origin" name="origin" placeholder="https://search.example.com" required>
           </div>
           <div class="form-group">
             <label for="name">Display Name</label>
@@ -258,7 +258,7 @@ export function createAdminDashboardRoutes(
           </div>
           <div class="form-group">
             <label for="subject_value">Value</label>
-            <input type="text" id="subject_value" name="subject_value" placeholder="*.arcnode.xyz or did:plc:..." required>
+            <input type="text" id="subject_value" name="subject_value" placeholder="*.example.com or did:plc:..." required>
           </div>
           <div class="form-group">
             <label for="description">Description (optional)</label>
@@ -340,7 +340,7 @@ export function createAdminDashboardRoutes(
         description: description || null,
       });
       res.redirect('/admin/dashboard/access?msg=Rule+added');
-    } catch (_e) {
+    } catch {
       res.redirect('/admin/dashboard/access?msg=Failed+to+add+rule');
     }
   });
@@ -1053,7 +1053,7 @@ export function createAdminDashboardRoutes(
           </div>
           <div class="form-group">
             <label for="origin">Origin URL</label>
-            <input type="url" id="origin" name="origin" placeholder="https://search.arcnode.xyz" required>
+            <input type="url" id="origin" name="origin" placeholder="https://search.example.com" required>
           </div>
           <button type="submit" class="btn btn-primary">Add Service</button>
         </form>
