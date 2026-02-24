@@ -161,7 +161,7 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}): (req: Request,
  */
 export const authRateLimit = rateLimit({
   windowMs: 60 * 1000,   // 1 minute
-  maxRequests: 10,       // 10 auth attempts per minute
+  maxRequests: 30,       // 30 auth attempts per minute
 });
 
 /**
