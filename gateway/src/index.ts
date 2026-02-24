@@ -261,7 +261,7 @@ async function main(): Promise<void> {
 
   // OIDC routes (if enabled)
   if (oidcService) {
-    const { wellKnownRouter, oauthRouter } = createOIDCRouter(db, oidcService, oauth);
+    const { wellKnownRouter, oauthRouter } = createOIDCRouter(db, oidcService, oauth, passkeyService);
     app.use('/.well-known', wellKnownRouter);
     app.use('/oauth', authRateLimit, oauthRouter);
     console.log('OIDC routes enabled');

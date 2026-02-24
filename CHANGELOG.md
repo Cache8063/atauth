@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-02-23
+
+### Added
+
+- Passkey login on the OIDC authorize page: users with a registered passkey can now sign in with biometrics or a security key, skipping the Bluesky OAuth flow entirely
+- New endpoint `POST /oauth/authorize/passkey` completes the OIDC authorization code flow via WebAuthn
+- Login page shows "Sign in with a passkey" button when passkeys are enabled (feature-detected; hidden if browser lacks WebAuthn support)
+- Tests for passkey authorize flow (8 new tests)
+
 ## [2.0.2] - 2026-02-23
 
 ### Security
