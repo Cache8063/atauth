@@ -84,7 +84,8 @@ export function createUserProfileRoutes(
   router.get('/', (req: Request, res: Response) => {
     const session = getSession(req);
     if (!session) {
-      const profileUrl = `${req.protocol}://${req.get('host')}/auth/profile`;
+      const proto = req.get('x-forwarded-proto') || req.protocol;
+      const profileUrl = `${proto}://${req.get('host')}/auth/profile`;
       return res.redirect(`/auth/proxy/login?rd=${encodeURIComponent(profileUrl)}`);
     }
 
