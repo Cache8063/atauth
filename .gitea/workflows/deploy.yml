@@ -100,7 +100,9 @@ jobs:
       - name: Deploy to DO Kubernetes
         run: |
           echo "${{ secrets.DO_KUBECONFIG }}" | base64 -d > /tmp/kubeconfig
-          KUBECONFIG=/tmp/kubeconfig kubectl rollout restart deployment/${{ env.DEPLOYMENT }} -n ${{ env.NAMESPACE }}
+          KUBECONFIG=/tmp/kubeconfig kubectl set image deployment/${{ env.DEPLOYMENT }} \
+            ${{ env.DEPLOYMENT }}=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }} \
+            -n ${{ env.NAMESPACE }}
           KUBECONFIG=/tmp/kubeconfig kubectl rollout status deployment/${{ env.DEPLOYMENT }} -n ${{ env.NAMESPACE }} --timeout=120s
           rm -f /tmp/kubeconfig
 
