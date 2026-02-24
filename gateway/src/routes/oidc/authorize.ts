@@ -45,7 +45,11 @@ export function createAuthorizeRouter(
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #0f172a;
+      background-image:
+        radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, rgba(14, 165, 233, 0.1) 0%, transparent 50%);
       min-height: 100vh;
       display: flex;
       align-items: center;
@@ -53,39 +57,57 @@ export function createAuthorizeRouter(
       padding: 20px;
     }
     .container {
-      background: white;
+      background: #1e293b;
+      border: 1px solid #334155;
       border-radius: 16px;
       padding: 40px;
       width: 100%;
-      max-width: 400px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
     }
-    h1 { font-size: 24px; margin-bottom: 8px; color: #1a1a2e; }
-    .subtitle { color: #666; margin-bottom: 32px; font-size: 14px; }
+    .brand {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .brand-name {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    h1 { font-size: 22px; margin-bottom: 8px; color: #e2e8f0; font-weight: 600; }
+    .subtitle { color: #94a3b8; margin-bottom: 28px; font-size: 14px; }
     .client-info {
-      background: #f5f5f5;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid #334155;
       border-radius: 8px;
       padding: 12px;
       margin-bottom: 24px;
       font-size: 13px;
-      color: #444;
+      color: #94a3b8;
     }
-    .client-info strong { color: #1a1a2e; }
-    label { display: block; font-weight: 500; margin-bottom: 8px; color: #333; }
+    .client-info strong { color: #e2e8f0; }
+    label { display: block; font-weight: 500; margin-bottom: 8px; color: #cbd5e1; font-size: 14px; }
     input[type="text"] {
       width: 100%;
       padding: 14px 16px;
-      border: 2px solid #e0e0e0;
+      background: #0f172a;
+      border: 1px solid #334155;
       border-radius: 8px;
       font-size: 16px;
-      transition: border-color 0.2s;
+      color: #e2e8f0;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-    input[type="text"]:focus { outline: none; border-color: #667eea; }
-    .hint { font-size: 12px; color: #888; margin-top: 8px; }
+    input[type="text"]::placeholder { color: #475569; }
+    input[type="text"]:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+    .hint { font-size: 12px; color: #64748b; margin-top: 8px; }
     button {
       width: 100%;
       padding: 14px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
       color: white;
       border: none;
       border-radius: 8px;
@@ -93,50 +115,52 @@ export function createAuthorizeRouter(
       font-weight: 600;
       cursor: pointer;
       margin-top: 24px;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
     }
-    button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
-    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
     .error {
-      background: #fee;
-      color: #c00;
+      background: rgba(127, 29, 29, 0.4);
+      border: 1px solid rgba(252, 165, 165, 0.2);
+      color: #fca5a5;
       padding: 12px;
       border-radius: 8px;
       margin-bottom: 16px;
       font-size: 14px;
       display: none;
     }
-    .logo { text-align: center; margin-bottom: 24px; font-size: 32px; }
     .divider { display: flex; align-items: center; margin: 24px 0; gap: 12px; }
-    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #e0e0e0; }
-    .divider span { color: #999; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #334155; }
+    .divider span { color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
     .passkey-btn {
       width: 100%;
       padding: 14px;
-      background: white;
-      color: #333;
-      border: 2px solid #e0e0e0;
+      background: transparent;
+      color: #e2e8f0;
+      border: 1px solid #334155;
       border-radius: 8px;
       font-size: 16px;
       font-weight: 600;
       cursor: pointer;
-      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+      transition: border-color 0.2s, transform 0.15s, box-shadow 0.15s, background 0.2s;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
+      margin-top: 0;
     }
-    .passkey-btn:hover { border-color: #667eea; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2); }
-    .passkey-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-    .passkey-icon { font-size: 20px; line-height: 1; }
-    .privacy { font-size: 12px; color: #888; margin-top: 20px; line-height: 1.5; text-align: center; }
-    .privacy strong { color: #555; }
+    .passkey-btn:hover { border-color: #3b82f6; background: rgba(59, 130, 246, 0.06); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1); }
+    .passkey-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+    .passkey-btn svg { width: 18px; height: 18px; }
+    .privacy { font-size: 12px; color: #64748b; margin-top: 24px; line-height: 1.6; text-align: center; }
+    .privacy strong { color: #94a3b8; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="logo">&#128274;</div>
-    <h1>Sign in with ATAuth</h1>
+    <div class="brand"><span class="brand-name">ATAuth</span></div>
+    <h1>Sign in</h1>
     <p class="subtitle">Use your Bluesky or AT Protocol identity</p>
     <div class="client-info">Signing in to <strong>${esc(clientName)}</strong></div>
     ${errorHtml}
@@ -150,9 +174,10 @@ export function createAuthorizeRouter(
     </form>${passkeyEnabled ? `
     <div class="divider"><span>or</span></div>
     <button type="button" class="passkey-btn" id="passkeyBtn" style="display:none">
-      <span class="passkey-icon">&#128273;</span> Sign in with a passkey
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7a4 4 0 1 0-4 4"/><path d="M11 11l-1.5 1.5"/><path d="M9.5 12.5L6 16H4v2h2v-2h2v-2l1.5-1.5"/></svg>
+      Sign in with passkey
     </button>` : ''}
-    <p class="privacy">Bluesky will ask to authorize broad access — this is a limitation of the AT&nbsp;Protocol OAuth standard. <strong>${esc(clientName)}</strong> only reads your identity (handle). It will never post, follow, or access your data.</p>
+    <p class="privacy">Bluesky will ask to authorize broad access -- this is a limitation of the AT&nbsp;Protocol OAuth standard. <strong>${esc(clientName)}</strong> only reads your identity (handle). It will never post, follow, or access your data.</p>
   </div>
   <script${nonce ? ` nonce="${nonce}"` : ''}>
     var form = document.getElementById('loginForm');
@@ -189,7 +214,7 @@ export function createAuthorizeRouter(
       passkeyBtn.style.display = 'flex';
       passkeyBtn.addEventListener('click', function() {
         passkeyBtn.disabled = true;
-        passkeyBtn.innerHTML = '<span class="passkey-icon">&#128273;</span> Authenticating...';
+        passkeyBtn.textContent = 'Authenticating...';
         if (errorDiv) errorDiv.style.display = 'none';
         fetch('/auth/passkey/authenticate/options', {
           method: 'POST',
@@ -243,7 +268,7 @@ export function createAuthorizeRouter(
           } else {
             showError(result.error_description || 'Passkey authentication failed');
             passkeyBtn.disabled = false;
-            passkeyBtn.innerHTML = '<span class="passkey-icon">&#128273;</span> Sign in with a passkey';
+            passkeyBtn.textContent = 'Sign in with passkey';
           }
         })
         .catch(function(err) {
@@ -251,7 +276,7 @@ export function createAuthorizeRouter(
             showError('Passkey authentication failed. Try signing in with your handle.');
           }
           passkeyBtn.disabled = false;
-          passkeyBtn.innerHTML = '<span class="passkey-icon">&#128273;</span> Sign in with a passkey';
+          passkeyBtn.textContent = 'Sign in with passkey';
         });
       });
     }` : ''}

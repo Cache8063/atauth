@@ -28,6 +28,7 @@ import { createPasskeyRouter } from './routes/passkey.js';
 import { createMFARouter } from './routes/mfa.js';
 import { createEmailRouter } from './routes/email.js';
 import { createProxyAuthRoutes } from './routes/proxy-auth.js';
+import { createUserProfileRoutes } from './routes/user-profile.js';
 import { authRateLimit, apiRateLimit, adminRateLimit } from './middleware/rateLimit.js';
 import { HttpError } from './utils/errors.js';
 
@@ -269,7 +270,8 @@ async function main(): Promise<void> {
 
   // Passkey routes (if enabled)
   if (passkeyService) {
-    app.use('/auth/passkey', authRateLimit, createPasskeyRouter(db, passkeyService, oidcService));
+    const passkeySessionSecret = config.forwardAuth.enabled ? config.forwardAuth.sessionSecret : undefined;
+    app.use('/auth/passkey', authRateLimit, createPasskeyRouter(db, passkeyService, oidcService, passkeySessionSecret));
     console.log('Passkey routes enabled');
   }
 
@@ -286,6 +288,13 @@ async function main(): Promise<void> {
   }
 
   // Forward-auth proxy routes were mounted earlier (before /auth rate limiter)
+
+  // User profile routes (forward-auth session authenticated)
+  if (config.forwardAuth.enabled) {
+    const profileRouter = createUserProfileRoutes(db, passkeyService, config.forwardAuth.sessionSecret!);
+    app.use('/auth/profile', authRateLimit, profileRouter);
+    console.log('User profile routes enabled');
+  }
 
   // OAuth client metadata (for AT Protocol discovery)
   app.get('/client-metadata.json', (_req, res) => {

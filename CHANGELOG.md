@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-02-24
+
+### Added
+
+- User profile page at `/auth/profile` with passkey registration, passkey management (rename/delete), and active session management (view/revoke)
+- Forward-auth session cookie authentication for passkey API routes (enables profile page WebAuthn registration)
+
+### Changed
+
+- Login page theme: dark mode, no emojis, gradient accent (blue-violet), matching admin dashboard aesthetic
+- Both OIDC and forward-auth login pages share the new dark theme
+- Passkey button text simplified to "Sign in with passkey" with SVG key icon
+- Brand text "ATAuth" replaces emoji lock logo
+
 ## [2.0.3] - 2026-02-23
 
 ### Added

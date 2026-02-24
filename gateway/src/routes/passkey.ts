@@ -10,11 +10,13 @@ import type { DatabaseService } from '../services/database.js';
 import type { PasskeyService } from '../services/passkey.js';
 import type { OIDCService } from '../services/oidc/index.js';
 import { HttpError } from '../utils/errors.js';
+import { verifySessionCookie, parseCookies, SESSION_COOKIE_NAME } from '../utils/proxy-auth.js';
 
 export function createPasskeyRouter(
   db: DatabaseService,
   passkeyService: PasskeyService,
-  oidcService: OIDCService | null
+  oidcService: OIDCService | null,
+  sessionSecret?: string
 ): Router {
   const router = Router();
 
@@ -25,7 +27,7 @@ export function createPasskeyRouter(
    */
   router.post('/register/options', async (req: Request, res: Response) => {
     try {
-      const { did, handle } = await authenticateRequest(req, db, oidcService);
+      const { did, handle } = await authenticateRequest(req, db, oidcService, sessionSecret);
 
       if (!did) {
         throw new HttpError(401, 'unauthorized', 'Authentication required');
@@ -48,7 +50,7 @@ export function createPasskeyRouter(
    */
   router.post('/register/verify', async (req: Request, res: Response) => {
     try {
-      const { did, handle } = await authenticateRequest(req, db, oidcService);
+      const { did, handle } = await authenticateRequest(req, db, oidcService, sessionSecret);
 
       if (!did) {
         throw new HttpError(401, 'unauthorized', 'Authentication required');
@@ -165,7 +167,7 @@ export function createPasskeyRouter(
    */
   router.get('/list', async (req: Request, res: Response) => {
     try {
-      const { did } = await authenticateRequest(req, db, oidcService);
+      const { did } = await authenticateRequest(req, db, oidcService, sessionSecret);
 
       if (!did) {
         throw new HttpError(401, 'unauthorized', 'Authentication required');
@@ -188,7 +190,7 @@ export function createPasskeyRouter(
    */
   router.put('/:id', async (req: Request, res: Response) => {
     try {
-      const { did } = await authenticateRequest(req, db, oidcService);
+      const { did } = await authenticateRequest(req, db, oidcService, sessionSecret);
 
       if (!did) {
         throw new HttpError(401, 'unauthorized', 'Authentication required');
@@ -219,7 +221,7 @@ export function createPasskeyRouter(
    */
   router.delete('/:id', async (req: Request, res: Response) => {
     try {
-      const { did } = await authenticateRequest(req, db, oidcService);
+      const { did } = await authenticateRequest(req, db, oidcService, sessionSecret);
 
       if (!did) {
         throw new HttpError(401, 'unauthorized', 'Authentication required');
@@ -256,7 +258,8 @@ export function createPasskeyRouter(
 async function authenticateRequest(
   req: Request,
   db: DatabaseService,
-  oidcService: OIDCService | null
+  oidcService: OIDCService | null,
+  sessionSecret?: string
 ): Promise<{ did?: string; handle?: string }> {
   // Try to authenticate via access token
   const authHeader = req.headers.authorization;
@@ -273,7 +276,7 @@ async function authenticateRequest(
     }
   }
 
-  // Try to authenticate via session cookie
+  // Try to authenticate via session header
   const sessionId = req.headers['x-session-id'] as string;
   if (sessionId) {
     const session = db.getSession(sessionId);
@@ -282,6 +285,24 @@ async function authenticateRequest(
         did: session.did,
         handle: session.handle,
       };
+    }
+  }
+
+  // Try to authenticate via forward-auth session cookie
+  if (sessionSecret) {
+    const cookies = parseCookies(req.headers.cookie);
+    const sessionCookie = cookies[SESSION_COOKIE_NAME];
+    if (sessionCookie) {
+      const proxySessionId = verifySessionCookie(sessionCookie, sessionSecret);
+      if (proxySessionId) {
+        const proxySession = db.getProxySession(proxySessionId);
+        if (proxySession && proxySession.expires_at > Math.floor(Date.now() / 1000)) {
+          return {
+            did: proxySession.did,
+            handle: proxySession.handle,
+          };
+        }
+      }
     }
   }
 

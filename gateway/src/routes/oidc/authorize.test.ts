@@ -245,7 +245,7 @@ describe('GET /oauth/authorize - login page', () => {
 
     expect(res.status).toBe(200);
     expect(res.text).toContain('passkeyBtn');
-    expect(res.text).toContain('Sign in with a passkey');
+    expect(res.text).toContain('Sign in with passkey');
     expect(res.text).toContain('b64urlToBuffer');
   });
 
@@ -264,7 +264,7 @@ describe('GET /oauth/authorize - login page', () => {
 
     expect(res.status).toBe(200);
     expect(res.text).not.toContain('passkeyBtn');
-    expect(res.text).not.toContain('Sign in with a passkey');
+    expect(res.text).not.toContain('Sign in with passkey');
     // Handle form should still be present
     expect(res.text).toContain('loginForm');
     expect(res.text).toContain('you.bsky.social');
