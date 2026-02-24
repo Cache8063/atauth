@@ -453,6 +453,7 @@ function renderProxyLoginPage(authRequestId: string, nonce?: string, errorMessag
 </head>
 <body>
   <div class="container">
+    <div class="brand"><span class="brand-name">ATAuth</span></div>
     <h1>Sign in to continue</h1>
     <p class="subtitle">Authenticate with your Bluesky account to access this service</p>
     ${errorHtml}
@@ -563,7 +564,11 @@ function sharedStyles(): string {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #0f172a;
+      background-image:
+        radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, rgba(14, 165, 233, 0.1) 0%, transparent 50%);
       min-height: 100vh;
       display: flex;
       align-items: center;
@@ -571,30 +576,47 @@ function sharedStyles(): string {
       padding: 20px;
     }
     .container {
-      background: white;
+      background: #1e293b;
+      border: 1px solid #334155;
       border-radius: 16px;
       padding: 40px;
       width: 100%;
-      max-width: 400px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
     }
-    h1 { font-size: 24px; margin-bottom: 8px; color: #1a1a2e; }
-    .subtitle { color: #666; margin-bottom: 32px; font-size: 14px; }
-    label { display: block; font-weight: 500; margin-bottom: 8px; color: #333; }
+    .brand {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .brand-name {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    h1 { font-size: 22px; margin-bottom: 8px; color: #e2e8f0; font-weight: 600; }
+    .subtitle { color: #94a3b8; margin-bottom: 28px; font-size: 14px; }
+    label { display: block; font-weight: 500; margin-bottom: 8px; color: #cbd5e1; font-size: 14px; }
     input[type="text"] {
       width: 100%;
       padding: 14px 16px;
-      border: 2px solid #e0e0e0;
+      background: #0f172a;
+      border: 1px solid #334155;
       border-radius: 8px;
       font-size: 16px;
-      transition: border-color 0.2s;
+      color: #e2e8f0;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-    input[type="text"]:focus { outline: none; border-color: #667eea; }
-    .hint { font-size: 12px; color: #888; margin-top: 8px; }
+    input[type="text"]::placeholder { color: #475569; }
+    input[type="text"]:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+    .hint { font-size: 12px; color: #64748b; margin-top: 8px; }
     button {
       width: 100%;
       padding: 14px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
       color: white;
       border: none;
       border-radius: 8px;
@@ -602,20 +624,22 @@ function sharedStyles(): string {
       font-weight: 600;
       cursor: pointer;
       margin-top: 24px;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
     }
-    button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
-    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
     .error {
-      background: #fee;
-      color: #c00;
+      background: rgba(127, 29, 29, 0.4);
+      border: 1px solid rgba(252, 165, 165, 0.2);
+      color: #fca5a5;
       padding: 12px;
       border-radius: 8px;
       margin-bottom: 16px;
       font-size: 14px;
       display: none;
     }
-    .privacy { font-size: 12px; color: #888; margin-top: 20px; line-height: 1.5; text-align: center; }
-    .privacy strong { color: #555; }
+    .privacy { font-size: 12px; color: #64748b; margin-top: 24px; line-height: 1.6; text-align: center; }
+    .privacy strong { color: #94a3b8; }
   </style>`;
 }
