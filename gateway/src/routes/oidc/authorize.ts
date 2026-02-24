@@ -9,13 +9,15 @@ import crypto from 'crypto';
 import type { DatabaseService } from '../../services/database.js';
 import type { OIDCService } from '../../services/oidc/index.js';
 import type { OAuthService } from '../../services/oauth.js';
+import type { PasskeyService } from '../../services/passkey.js';
 import { parseScopes, hasOpenIdScope, validateScopes } from '../../services/oidc/claims.js';
 import { isValidCodeChallengeMethod } from '../../services/oidc/pkce.js';
 
 export function createAuthorizeRouter(
   db: DatabaseService,
   oidcService: OIDCService,
-  oauthService: OAuthService
+  oauthService: OAuthService,
+  passkeyService?: PasskeyService | null
 ): Router {
   const router = Router();
 
@@ -28,7 +30,7 @@ export function createAuthorizeRouter(
       .replace(/'/g, '&#39;');
   }
 
-  function renderLoginPage(clientName: string, authCode: string, state: string, errorMessage?: string, nonce?: string): string {
+  function renderLoginPage(clientName: string, authCode: string, state: string, errorMessage?: string, nonce?: string, passkeyEnabled?: boolean): string {
     const errorHtml = errorMessage
       ? `<div class="error" style="display:block">${esc(errorMessage)}</div>`
       : '<div class="error" id="error"></div>';
@@ -105,6 +107,28 @@ export function createAuthorizeRouter(
       display: none;
     }
     .logo { text-align: center; margin-bottom: 24px; font-size: 32px; }
+    .divider { display: flex; align-items: center; margin: 24px 0; gap: 12px; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #e0e0e0; }
+    .divider span { color: #999; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .passkey-btn {
+      width: 100%;
+      padding: 14px;
+      background: white;
+      color: #333;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .passkey-btn:hover { border-color: #667eea; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2); }
+    .passkey-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .passkey-icon { font-size: 20px; line-height: 1; }
     .privacy { font-size: 12px; color: #888; margin-top: 20px; line-height: 1.5; text-align: center; }
     .privacy strong { color: #555; }
   </style>
@@ -123,7 +147,11 @@ export function createAuthorizeRouter(
       <input type="text" id="handle" name="handle" placeholder="you.bsky.social" autocomplete="username" autocapitalize="none" spellcheck="false" required>
       <p class="hint">Enter your Bluesky handle or custom domain</p>
       <button type="submit" id="submitBtn">Continue</button>
-    </form>
+    </form>${passkeyEnabled ? `
+    <div class="divider"><span>or</span></div>
+    <button type="button" class="passkey-btn" id="passkeyBtn" style="display:none">
+      <span class="passkey-icon">&#128273;</span> Sign in with a passkey
+    </button>` : ''}
     <p class="privacy">Bluesky will ask to authorize broad access — this is a limitation of the AT&nbsp;Protocol OAuth standard. <strong>${esc(clientName)}</strong> only reads your identity (handle). It will never post, follow, or access your data.</p>
   </div>
   <script${nonce ? ` nonce="${nonce}"` : ''}>
@@ -137,7 +165,96 @@ export function createAuthorizeRouter(
       submitBtn.disabled = true;
       submitBtn.textContent = 'Redirecting...';
       if (errorDiv) errorDiv.style.display = 'none';
-    });
+    });${passkeyEnabled ? `
+    function b64urlToBuffer(s) {
+      var b = s.replace(/-/g, '+').replace(/_/g, '/');
+      var pad = b.length % 4 === 0 ? '' : '='.repeat(4 - (b.length % 4));
+      var bin = atob(b + pad);
+      var arr = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr.buffer;
+    }
+    function bufferToB64url(buf) {
+      var bytes = new Uint8Array(buf);
+      var bin = '';
+      for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+    }
+    function showError(msg) {
+      var e = document.getElementById('error');
+      if (e) { e.textContent = msg; e.style.display = 'block'; }
+    }
+    var passkeyBtn = document.getElementById('passkeyBtn');
+    if (passkeyBtn && window.PublicKeyCredential) {
+      passkeyBtn.style.display = 'flex';
+      passkeyBtn.addEventListener('click', function() {
+        passkeyBtn.disabled = true;
+        passkeyBtn.innerHTML = '<span class="passkey-icon">&#128273;</span> Authenticating...';
+        if (errorDiv) errorDiv.style.display = 'none';
+        fetch('/auth/passkey/authenticate/options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(opts) {
+          var pubKeyOpts = {
+            challenge: b64urlToBuffer(opts.challenge),
+            timeout: opts.timeout,
+            rpId: opts.rpId,
+            userVerification: opts.userVerification
+          };
+          if (opts.allowCredentials && opts.allowCredentials.length > 0) {
+            pubKeyOpts.allowCredentials = opts.allowCredentials.map(function(c) {
+              return { id: b64urlToBuffer(c.id), type: c.type, transports: c.transports };
+            });
+          }
+          return navigator.credentials.get({ publicKey: pubKeyOpts }).then(function(cred) {
+            return { cred: cred, challenge: opts.challenge };
+          });
+        })
+        .then(function(res) {
+          var cred = res.cred;
+          return fetch('/oauth/authorize/passkey', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              auth_code: document.querySelector('input[name="auth_code"]').value,
+              challenge: res.challenge,
+              credential: {
+                id: cred.id,
+                rawId: bufferToB64url(cred.rawId),
+                response: {
+                  clientDataJSON: bufferToB64url(cred.response.clientDataJSON),
+                  authenticatorData: bufferToB64url(cred.response.authenticatorData),
+                  signature: bufferToB64url(cred.response.signature),
+                  userHandle: cred.response.userHandle ? bufferToB64url(cred.response.userHandle) : undefined
+                },
+                type: cred.type,
+                authenticatorAttachment: cred.authenticatorAttachment
+              }
+            })
+          });
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+          if (result.redirect_url) {
+            window.location.href = result.redirect_url;
+          } else {
+            showError(result.error_description || 'Passkey authentication failed');
+            passkeyBtn.disabled = false;
+            passkeyBtn.innerHTML = '<span class="passkey-icon">&#128273;</span> Sign in with a passkey';
+          }
+        })
+        .catch(function(err) {
+          if (err.name !== 'NotAllowedError') {
+            showError('Passkey authentication failed. Try signing in with your handle.');
+          }
+          passkeyBtn.disabled = false;
+          passkeyBtn.innerHTML = '<span class="passkey-icon">&#128273;</span> Sign in with a passkey';
+        });
+      });
+    }` : ''}
   </script>
 </body>
 </html>`;
@@ -276,7 +393,7 @@ export function createAuthorizeRouter(
       });
 
       // Show login page asking for handle
-      res.type('html').send(renderLoginPage(client.name || client_id, authCode, state || '', undefined, res.locals.cspNonce));
+      res.type('html').send(renderLoginPage(client.name || client_id, authCode, state || '', undefined, res.locals.cspNonce, !!passkeyService));
     } catch (error) {
       console.error('[OIDC Authorize] Error:', error);
       res.status(500).json({
@@ -382,8 +499,78 @@ export function createAuthorizeRouter(
         const errAuthData = errAuthCode ? db.getAuthorizationCode(errAuthCode) : null;
         const errClient = errAuthData ? db.getApp(errAuthData.client_id) : null;
         const errClientName = errClient?.name || errAuthData?.client_id || 'Unknown';
-        res.status(400).type('html').send(renderLoginPage(errClientName, errAuthCode || '', errAuthData?.state || '', userMessage, res.locals.cspNonce));
+        res.status(400).type('html').send(renderLoginPage(errClientName, errAuthCode || '', errAuthData?.state || '', userMessage, res.locals.cspNonce, !!passkeyService));
       }
+    }
+  });
+
+  /**
+   * POST /oauth/authorize/passkey
+   * Authenticate via passkey and complete the OIDC authorization flow
+   */
+  router.post('/authorize/passkey', async (req: Request, res: Response) => {
+    try {
+      if (!passkeyService) {
+        return res.status(404).json({
+          error: 'not_found',
+          error_description: 'Passkey authentication is not enabled',
+        });
+      }
+
+      const { auth_code, credential, challenge } = req.body;
+
+      if (!auth_code || !credential || !challenge) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing required parameters: auth_code, credential, challenge',
+        });
+      }
+
+      // Validate the pending authorization code
+      const authData = db.getAuthorizationCode(auth_code);
+      if (!authData) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Authorization request expired or invalid',
+        });
+      }
+
+      if (authData.used) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Authorization code already used',
+        });
+      }
+
+      // Verify the passkey
+      const result = await passkeyService.verifyAuthentication(credential, challenge);
+
+      if (!result.success || !result.did || !result.handle) {
+        return res.status(401).json({
+          error: 'authentication_failed',
+          error_description: result.error || 'Passkey authentication failed',
+        });
+      }
+
+      console.log(`[OIDC Passkey] Authenticated user: ${result.handle} (${result.did})`);
+
+      // Update the authorization code with the user's identity
+      db.updateAuthorizationCodeUser(auth_code, result.did, result.handle);
+
+      // Build the redirect URL back to the original client
+      const clientRedirectUrl = new URL(authData.redirect_uri);
+      clientRedirectUrl.searchParams.set('code', auth_code);
+      if (authData.state) {
+        clientRedirectUrl.searchParams.set('state', authData.state);
+      }
+
+      res.json({ redirect_url: clientRedirectUrl.toString() });
+    } catch (error) {
+      console.error('[OIDC Passkey] Error:', error);
+      res.status(500).json({
+        error: 'server_error',
+        error_description: 'Internal server error',
+      });
     }
   });
 

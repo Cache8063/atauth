@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-02-23
+
+### Added
+
+- Passkey login on the OIDC authorize page: users with a registered passkey can now sign in with biometrics or a security key, skipping the Bluesky OAuth flow entirely
+- New endpoint `POST /oauth/authorize/passkey` completes the OIDC authorization code flow via WebAuthn
+- Login page shows "Sign in with a passkey" button when passkeys are enabled (feature-detected; hidden if browser lacks WebAuthn support)
+- Tests for passkey authorize flow (8 new tests)
+
 ## [2.0.2] - 2026-02-23
 
 ### Security
@@ -39,9 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- CLAUDE.md: lean rewrite, operational content moved to `.claude/commands/` skills
 - README.md: rewritten for OIDC provider reality (removed stale Rust/TS library references)
-- Admin token rotated from placeholder to proper random token
+- docs/HOMELAB.md: updated for OIDC setup wizard workflow
 
 ## [2.0.0] - 2026-02-22
 
@@ -68,13 +76,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Access check dry-run tool
   - HMAC-signed CSRF tokens on all forms
   - Cookie-based auth (24h TTL) alongside Bearer token auth
-- **CI/CD**: Gitea Actions pipeline (test -> build -> push -> deploy to DigitalOcean k8s)
+- **CI/CD**: GitHub Actions pipeline (test on push)
 
 ### Changed
 
-- **Infrastructure**: Migrated from local k3s (Proxmox) to DigitalOcean Managed Kubernetes
-- **Registry**: Moved from Gitea container registry to DigitalOcean Container Registry
-- **Deployment strategy**: Recreate (RWO PVC for SQLite)
+- **Infrastructure**: Docker Compose and Kubernetes deployment support
 - **Test suite**: Expanded from ~50 to 262 tests across 11 test files
 
 ### Fixed
@@ -164,8 +170,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Input validation and sanitization
 - Rate limiting on all endpoints
 
-[2.0.1]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v2.0.0...main
-[2.0.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v1.3.0...v2.0.0
+[2.0.1]: https://github.com/Cache8063/atauth/compare/v2.0.0...main
+[2.0.0]: https://github.com/Cache8063/atauth/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/Cache8063/atauth/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Cache8063/atauth/compare/v1.0.0...v1.2.0
 [1.0.0]: https://github.com/Cache8063/atauth/releases/tag/v1.0.0
