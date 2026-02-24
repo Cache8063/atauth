@@ -67,7 +67,7 @@ export class PasskeyService {
         transports: cred.transports as AuthenticatorTransportFuture[] | undefined,
       })),
       authenticatorSelection: {
-        residentKey: 'preferred',
+        residentKey: 'required',
         userVerification: 'preferred',
         authenticatorAttachment: undefined, // Allow both platform and cross-platform
       },
