@@ -8,6 +8,7 @@ import { Router } from 'express';
 import type { DatabaseService } from '../../services/database.js';
 import type { OIDCService } from '../../services/oidc/index.js';
 import type { OAuthService } from '../../services/oauth.js';
+import type { PasskeyService } from '../../services/passkey.js';
 
 import { createDiscoveryRouter } from './discovery.js';
 import { createAuthorizeRouter } from './authorize.js';
@@ -19,7 +20,8 @@ import { createLogoutRouter } from './logout.js';
 export function createOIDCRouter(
   db: DatabaseService,
   oidcService: OIDCService,
-  oauthService: OAuthService
+  oauthService: OAuthService,
+  passkeyService?: PasskeyService | null
 ): { wellKnownRouter: Router; oauthRouter: Router } {
   // Discovery endpoints go under /.well-known
   const wellKnownRouter = createDiscoveryRouter(oidcService);
@@ -28,7 +30,7 @@ export function createOIDCRouter(
   const oauthRouter = Router();
 
   // Mount sub-routers
-  const authorizeRouter = createAuthorizeRouter(db, oidcService, oauthService);
+  const authorizeRouter = createAuthorizeRouter(db, oidcService, oauthService, passkeyService);
   const tokenRouter = createTokenRouter(db, oidcService);
   const userInfoRouter = createUserInfoRouter(db, oidcService);
   const revokeRouter = createRevokeRouter(db);
