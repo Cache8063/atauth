@@ -333,6 +333,28 @@ async function main(): Promise<void> {
       });
     }
 
+    // Handle AT Protocol identity resolution failures (invalid/unresolvable handles)
+    if (err.constructor?.name === 'OAuthResolverError') {
+      const cause = (err as any).cause;
+      const handleMatch = err.message.match(/identity:\s*(.+)/);
+      const handle = handleMatch ? handleMatch[1] : 'unknown';
+      let userMessage = `Could not resolve handle "${handle}". `;
+
+      if (cause?.message?.includes('does not resolve to a DID')) {
+        userMessage += 'This handle has no _atproto DNS TXT record. Ensure the handle is configured on a PDS with proper DNS records.';
+      } else if (cause?.message?.includes('not found')) {
+        userMessage += 'The handle was not found. Check that the handle is spelled correctly and the PDS is reachable.';
+      } else {
+        userMessage += 'The AT Protocol identity could not be verified. Check that the handle exists and the PDS is online.';
+      }
+
+      console.error(`Identity resolution failed for "${handle}":`, cause?.message || err.message);
+      return res.status(400).json({
+        error: 'handle_resolution_failed',
+        message: userMessage,
+      });
+    }
+
     // Log unexpected errors
     console.error('Unhandled error:', err);
     res.status(500).json({
