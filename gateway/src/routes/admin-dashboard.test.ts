@@ -40,7 +40,7 @@ describe('Dashboard Overview', () => {
   });
 
   it('should render overview page with stats', async () => {
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     const res = await request(app)
       .get('/admin/dashboard')
@@ -87,7 +87,7 @@ describe('Dashboard Origins', () => {
   });
 
   it('should list existing origins', async () => {
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     const res = await request(app)
       .get('/admin/dashboard/origins')
@@ -95,7 +95,7 @@ describe('Dashboard Origins', () => {
 
     expect(res.status).toBe(200);
     expect(res.text).toContain('SearXNG');
-    expect(res.text).toContain('search.arcnode.xyz');
+    expect(res.text).toContain('search.example.com');
   });
 
   it('should add an origin via form POST', async () => {
@@ -135,7 +135,7 @@ describe('Dashboard Origins', () => {
   });
 
   it('should delete an origin via form POST', async () => {
-    const origin = db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    const origin = db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     const page = await request(app)
       .get('/admin/dashboard/origins')
@@ -193,14 +193,14 @@ describe('Dashboard Access Rules', () => {
         origin_id: '',
         rule_type: 'allow',
         subject_type: 'handle_pattern',
-        subject_value: '*.arcnode.xyz',
+        subject_value: '*.example.com',
         description: 'PDS users',
       });
 
     expect(res.status).toBe(302);
     const rules = db.listProxyAccessRules();
     expect(rules).toHaveLength(1);
-    expect(rules[0].subject_value).toBe('*.arcnode.xyz');
+    expect(rules[0].subject_value).toBe('*.example.com');
   });
 
   it('should display existing rules', async () => {
@@ -208,7 +208,7 @@ describe('Dashboard Access Rules', () => {
       origin_id: null,
       rule_type: 'allow',
       subject_type: 'handle_pattern',
-      subject_value: '*.arcnode.xyz',
+      subject_value: '*.example.com',
       description: 'PDS users',
     });
 
@@ -216,7 +216,7 @@ describe('Dashboard Access Rules', () => {
       .get('/admin/dashboard/access')
       .set('Cookie', adminCookie());
 
-    expect(res.text).toContain('*.arcnode.xyz');
+    expect(res.text).toContain('*.example.com');
     expect(res.text).toContain('PDS users');
     expect(res.text).toContain('allow');
   });
@@ -313,12 +313,12 @@ describe('Dashboard Access Check', () => {
   });
 
   it('should show access check result', async () => {
-    const origin = db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    const origin = db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
     db.createProxyAccessRule({
       origin_id: null,
       rule_type: 'allow',
       subject_type: 'handle_pattern',
-      subject_value: '*.arcnode.xyz',
+      subject_value: '*.example.com',
       description: null,
     });
 
@@ -335,7 +335,7 @@ describe('Dashboard Access Check', () => {
       .send({
         _csrf: csrf,
         did: 'did:plc:test123',
-        handle: 'bkb.arcnode.xyz',
+        handle: 'alice.example.com',
         origin_id: origin.id.toString(),
       });
 
@@ -344,12 +344,12 @@ describe('Dashboard Access Check', () => {
   });
 
   it('should show denied result', async () => {
-    const origin = db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    const origin = db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
     db.createProxyAccessRule({
       origin_id: null,
       rule_type: 'allow',
       subject_type: 'handle_pattern',
-      subject_value: '*.arcnode.xyz',
+      subject_value: '*.example.com',
       description: null,
     });
 
@@ -895,7 +895,7 @@ describe('Dashboard Proxy Wizard', () => {
       .send({
         _csrf: csrf,
         name: 'SearXNG',
-        origin: 'https://search.arcnode.xyz',
+        origin: 'https://search.example.com',
       });
 
     expect(res.status).toBe(302);
@@ -909,7 +909,7 @@ describe('Dashboard Proxy Wizard', () => {
 
   it('should display config snippets on result page', async () => {
     const res = await request(app)
-      .get('/admin/dashboard/proxy-wizard/result?origin=https://search.arcnode.xyz&name=SearXNG&origin_id=1')
+      .get('/admin/dashboard/proxy-wizard/result?origin=https://search.example.com&name=SearXNG&origin_id=1')
       .set('Cookie', adminCookie());
 
     expect(res.status).toBe(200);

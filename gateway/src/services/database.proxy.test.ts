@@ -135,8 +135,8 @@ describe('Proxy Allowed Origins', () => {
   });
 
   it('should add and list allowed origins', () => {
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
-    db.addProxyAllowedOrigin('https://element.arcnode.xyz', 'Element');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
+    db.addProxyAllowedOrigin('https://chat.example.com', 'Element');
 
     const origins = db.listProxyAllowedOrigins();
     expect(origins).toHaveLength(2);
@@ -154,22 +154,22 @@ describe('Proxy Allowed Origins', () => {
   });
 
   it('should reject duplicate origins', () => {
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
     expect(() => {
-      db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG Copy');
+      db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG Copy');
     }).toThrow(/UNIQUE/);
   });
 
   it('should remove an allowed origin', () => {
-    const created = db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    const created = db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
     db.removeProxyAllowedOrigin(created.id);
     expect(db.listProxyAllowedOrigins()).toHaveLength(0);
   });
 
   it('should check if origin is allowed', () => {
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
-    expect(db.isProxyOriginAllowed('https://search.arcnode.xyz')).toBe(true);
+    expect(db.isProxyOriginAllowed('https://search.example.com')).toBe(true);
     expect(db.isProxyOriginAllowed('https://evil.example.com')).toBe(false);
   });
 });
@@ -189,7 +189,7 @@ describe('Proxy Auth Requests', () => {
     const now = Math.floor(Date.now() / 1000);
     const req = {
       id: 'auth-req-123',
-      redirect_uri: 'https://search.arcnode.xyz/path',
+      redirect_uri: 'https://search.example.com/path',
       created_at: now,
       expires_at: now + 600,
     };
@@ -197,7 +197,7 @@ describe('Proxy Auth Requests', () => {
 
     const retrieved = db.getProxyAuthRequest('auth-req-123');
     expect(retrieved).not.toBeNull();
-    expect(retrieved!.redirect_uri).toBe('https://search.arcnode.xyz/path');
+    expect(retrieved!.redirect_uri).toBe('https://search.example.com/path');
     expect(retrieved!.expires_at).toBe(now + 600);
   });
 
@@ -256,13 +256,13 @@ describe('Proxy Access Rules', () => {
       origin_id: null,
       rule_type: 'allow',
       subject_type: 'handle_pattern',
-      subject_value: '*.arcnode.xyz',
+      subject_value: '*.example.com',
       description: 'PDS users',
     });
 
     expect(rule.id).toBeGreaterThan(0);
     expect(rule.rule_type).toBe('allow');
-    expect(rule.subject_value).toBe('*.arcnode.xyz');
+    expect(rule.subject_value).toBe('*.example.com');
 
     const rules = db.listProxyAccessRules();
     expect(rules).toHaveLength(1);
@@ -283,7 +283,7 @@ describe('Proxy Access Rules', () => {
   });
 
   it('should filter rules by origin_id', () => {
-    const origin = db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    const origin = db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     db.createProxyAccessRule({
       origin_id: origin.id,
@@ -297,7 +297,7 @@ describe('Proxy Access Rules', () => {
       origin_id: null,
       rule_type: 'allow',
       subject_type: 'handle_pattern',
-      subject_value: '*.arcnode.xyz',
+      subject_value: '*.example.com',
       description: 'Global rule',
     });
 
@@ -311,13 +311,13 @@ describe('Proxy Access Rules', () => {
   });
 
   it('should partition rules for access check', () => {
-    const origin = db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    const origin = db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     db.createProxyAccessRule({
       origin_id: origin.id,
       rule_type: 'allow',
       subject_type: 'handle_pattern',
-      subject_value: '*.arcnode.xyz',
+      subject_value: '*.example.com',
       description: null,
     });
     db.createProxyAccessRule({
@@ -339,13 +339,13 @@ describe('Proxy Access Rules', () => {
     expect(result.denyRules).toHaveLength(1);
     expect(result.denyRules[0].subject_value).toBe('did:plc:banned');
     expect(result.originAllowRules).toHaveLength(1);
-    expect(result.originAllowRules[0].subject_value).toBe('*.arcnode.xyz');
+    expect(result.originAllowRules[0].subject_value).toBe('*.example.com');
     expect(result.globalAllowRules).toHaveLength(1);
     expect(result.globalAllowRules[0].subject_value).toBe('*');
   });
 
   it('should cascade delete rules when origin is removed', () => {
-    const origin = db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    const origin = db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     db.createProxyAccessRule({
       origin_id: origin.id,
@@ -371,8 +371,8 @@ describe('Proxy Access Rules', () => {
   });
 
   it('should look up origin ID by origin URL', () => {
-    const origin = db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
-    expect(db.getOriginIdByOrigin('https://search.arcnode.xyz')).toBe(origin.id);
+    const origin = db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
+    expect(db.getOriginIdByOrigin('https://search.example.com')).toBe(origin.id);
     expect(db.getOriginIdByOrigin('https://nonexistent.example.com')).toBeNull();
   });
 });

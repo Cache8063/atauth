@@ -11,7 +11,7 @@ Users see `500 Internal Server Error` when trying to log in.
 
 ## Symptoms
 
-- `md.bkb.cx` returns 500 Internal Server Error on login
+- `app.example.com` returns 500 Internal Server Error on login
 - ATAuth pod logs: `Unhandled error: TypeError: Invalid redirect_uri` at `NodeOAuthClient.authorize`
 - No AT Protocol OAuth requests reach the PDS -- error is thrown client-side before any network call
 
@@ -24,18 +24,18 @@ Two related bugs in how `redirect_uri` was handled:
 The `@atproto/oauth-client` library's `NodeOAuthClient.authorize()` validates that the `redirect_uri` is in its own `clientMetadata.redirect_uris` array before sending anything to the PDS (early validation, ~line 147 of `oauth-client.js`).
 
 The `/client-metadata.json` endpoint (served to PDSes for discovery) correctly listed all redirect URIs including the OIDC callback. However, the `NodeOAuthClient` instance inside `OAuthService` was initialized with only 2 URIs:
-- `https://apricot.workingtitle.zip/auth/callback` (primary)
-- `https://apricot.workingtitle.zip/proxy/callback` (proxy)
+- `https://auth.example.com/auth/callback` (primary)
+- `https://auth.example.com/proxy/callback` (proxy)
 
 Missing:
-- `https://apricot.workingtitle.zip/oauth/callback` (OIDC)
-- `https://apricot.workingtitle.zip/auth/proxy/callback` (forward-auth)
+- `https://auth.example.com/oauth/callback` (OIDC)
+- `https://auth.example.com/auth/proxy/callback` (forward-auth)
 
 **Location**: `gateway/src/services/oauth.ts` line 47, `gateway/src/index.ts` line 116
 
 ### Bug 2: Legacy auth flow passed downstream app callback as OAuth redirect_uri
 
-The `/auth/init` route passed the downstream app's callback URL (e.g., `https://md.bkb.cx/api/auth/callback`) as the `redirect_uri` to `NodeOAuthClient.authorize()`. This URL:
+The `/auth/init` route passed the downstream app's callback URL (e.g., `https://app.example.com/api/auth/callback`) as the `redirect_uri` to `NodeOAuthClient.authorize()`. This URL:
 1. Was not registered in `clientMetadata.redirect_uris` (fails local validation)
 2. Would not be accepted by the PDS (doesn't match client_id's registered callbacks)
 

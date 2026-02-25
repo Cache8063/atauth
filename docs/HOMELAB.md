@@ -11,7 +11,7 @@ ATAuth provides OIDC-based authentication for your homelab using AT Protocol ide
 ## Deploy
 
 ```bash
-git clone https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth.git
+git clone https://github.com/Cache8063/atauth.git
 cd atauth/gateway
 cp .env.example .env
 ```
@@ -168,7 +168,7 @@ The gateway auto-discovers the user's PDS from their handle. No special configur
 ATAuth supports per-user access rules:
 
 - **Allow/deny by DID**: Target specific AT Protocol identities
-- **Allow/deny by handle pattern**: `*.arcnode.xyz` matches all handles on a PDS domain
+- **Allow/deny by handle pattern**: `*.your-domain.com` matches all handles on a PDS domain
 - **Deny overrides**: Deny rules always win regardless of order
 - **Per-origin scoping**: Rules can target a specific origin or apply globally
 
