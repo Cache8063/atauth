@@ -35,27 +35,56 @@ Any app that supports OpenID Connect can use ATAuth. No custom integration neede
 
 ## Quick Start
 
+### 1. Clone and configure
+
 ```bash
 git clone https://github.com/Cache8063/atauth.git
 cd atauth/gateway
 cp .env.example .env
 ```
 
-Edit `.env` and fill in the required secrets (generate with `openssl rand -hex 32`):
+Edit `.env` -- replace `auth.yourdomain.com` with your actual domain in these fields:
 
 ```env
-ADMIN_TOKEN=<your-admin-token>
-OIDC_KEY_SECRET=<your-oidc-key-secret>
-MFA_ENCRYPTION_KEY=<your-64-hex-char-key>  # openssl rand -hex 32
+OAUTH_CLIENT_ID=https://auth.yourdomain.com/client-metadata.json
+OAUTH_REDIRECT_URI=https://auth.yourdomain.com/auth/callback
+OIDC_ISSUER=https://auth.yourdomain.com
+WEBAUTHN_RP_ID=auth.yourdomain.com
+WEBAUTHN_ORIGIN=https://auth.yourdomain.com
 ```
 
-Then start:
+Generate and fill in the required secrets:
 
 ```bash
+openssl rand -hex 32  # Use output for each value below
+```
+
+```env
+ADMIN_TOKEN=<generated-value>
+OIDC_KEY_SECRET=<generated-value>
+MFA_ENCRYPTION_KEY=<generated-value>
+```
+
+### 2. Start the service
+
+```bash
+cd ..  # back to repo root
 docker compose up -d
 ```
 
-Open the admin dashboard at `https://your-domain/admin/login` and use the setup wizard to register your first app.
+The gateway runs on `127.0.0.1:3100`. It needs a reverse proxy with TLS in front of it. The simplest option is Caddy (auto-HTTPS):
+
+```caddyfile
+auth.yourdomain.com {
+    reverse_proxy localhost:3100
+}
+```
+
+See the [Homelab Deployment Guide](docs/HOMELAB.md) for Traefik and nginx examples.
+
+### 3. Register your first app
+
+Open `https://auth.yourdomain.com/admin/login`, enter your admin token, and use the setup wizard to register an app.
 
 ## Supported Apps
 
