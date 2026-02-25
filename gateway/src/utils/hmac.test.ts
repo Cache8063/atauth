@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createGatewayToken, verifyGatewayToken, generateHmacSecret } from './hmac.js';
 
 const TEST_SECRET = 'a'.repeat(64);
@@ -83,7 +83,7 @@ describe('verifyGatewayToken', () => {
       { did: 'did:plc:test', handle: 'h', user_id: 1, app_id: 'a' },
       TEST_SECRET,
     );
-    const [_payload, sig] = token.split('.');
+    const [, sig] = token.split('.');
     const tamperedPayload = Buffer.from(JSON.stringify({ did: 'did:plc:evil', handle: 'h', user_id: 1, app_id: 'a', iat: 0, exp: 9999999999, nonce: 'x' })).toString('base64url');
     const result = verifyGatewayToken(`${tamperedPayload}.${sig}`, TEST_SECRET);
     expect(result).toBeNull();
