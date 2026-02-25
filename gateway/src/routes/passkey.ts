@@ -196,7 +196,7 @@ export function createPasskeyRouter(
         throw new HttpError(401, 'unauthorized', 'Authentication required');
       }
 
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { name } = req.body as { name: string };
 
       if (!name) {
@@ -227,7 +227,7 @@ export function createPasskeyRouter(
         throw new HttpError(401, 'unauthorized', 'Authentication required');
       }
 
-      const { id } = req.params;
+      const id = String(req.params.id);
 
       // Prevent deleting last passkey if MFA is required
       // (This is a safety check - can be configured based on policy)

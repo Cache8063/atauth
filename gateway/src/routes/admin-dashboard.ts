@@ -212,7 +212,7 @@ export function createAdminDashboardRoutes(
 
   router.post('/origins/:id/delete', (req: Request, res: Response) => {
     if (!requireCsrf(req, res)) return;
-    db.removeProxyAllowedOrigin(parseInt(req.params.id, 10));
+    db.removeProxyAllowedOrigin(parseInt(String(req.params.id), 10));
     res.redirect('/admin/dashboard/origins?msg=Origin+deleted');
   });
 
@@ -347,7 +347,7 @@ export function createAdminDashboardRoutes(
 
   router.post('/access/:id/delete', (req: Request, res: Response) => {
     if (!requireCsrf(req, res)) return;
-    db.deleteProxyAccessRule(parseInt(req.params.id, 10));
+    db.deleteProxyAccessRule(parseInt(String(req.params.id), 10));
     res.redirect('/admin/dashboard/access?msg=Rule+deleted');
   });
 
@@ -408,7 +408,7 @@ export function createAdminDashboardRoutes(
 
   router.post('/sessions/:id/delete', (req: Request, res: Response) => {
     if (!requireCsrf(req, res)) return;
-    db.deleteProxySession(req.params.id);
+    db.deleteProxySession(String(req.params.id));
     res.redirect('/admin/dashboard/sessions?msg=Session+revoked');
   });
 
@@ -700,7 +700,7 @@ export function createAdminDashboardRoutes(
   // --- Edit Client ---
 
   router.get('/clients/:id/edit', (req: Request, res: Response) => {
-    const client = db.getOIDCClient(req.params.id);
+    const client = db.getOIDCClient(String(req.params.id));
     if (!client) {
       return res.redirect('/admin/dashboard/clients?msg=Client+not+found');
     }
@@ -798,7 +798,7 @@ export function createAdminDashboardRoutes(
 
   router.post('/clients/:id/edit', (req: Request, res: Response) => {
     if (!requireCsrf(req, res)) return;
-    const clientId = req.params.id;
+    const clientId = String(req.params.id);
     const existing = db.getOIDCClient(clientId);
     if (!existing) {
       return res.redirect('/admin/dashboard/clients?msg=Client+not+found');
@@ -838,7 +838,7 @@ export function createAdminDashboardRoutes(
 
   router.post('/clients/:id/rotate-secret', (req: Request, res: Response) => {
     if (!requireCsrf(req, res)) return;
-    const clientId = req.params.id;
+    const clientId = String(req.params.id);
     const existing = db.getOIDCClient(clientId);
     if (!existing) {
       return res.redirect('/admin/dashboard/clients?msg=Client+not+found');
@@ -857,7 +857,7 @@ export function createAdminDashboardRoutes(
 
   router.post('/clients/:id/delete', (req: Request, res: Response) => {
     if (!requireCsrf(req, res)) return;
-    db.deleteApp(req.params.id);
+    db.deleteApp(String(req.params.id));
     res.redirect('/admin/dashboard/clients?msg=Client+deleted');
   });
 
@@ -886,7 +886,7 @@ export function createAdminDashboardRoutes(
   });
 
   router.get('/clients/wizard/:preset', (req: Request, res: Response) => {
-    const presetData = getPresetByKey(req.params.preset);
+    const presetData = getPresetByKey(String(req.params.preset));
     if (!presetData) {
       return res.status(404).setHeader('Content-Type', 'text/html; charset=utf-8').send(
         layout('Not Found', '<div class="card"><h2>Preset not found</h2><p><a href="/admin/dashboard/clients/wizard">Back to wizard</a></p></div>')
@@ -979,7 +979,8 @@ export function createAdminDashboardRoutes(
 
   router.post('/clients/wizard/:preset', (req: Request, res: Response) => {
     if (!requireCsrf(req, res)) return;
-    const presetData = getPresetByKey(req.params.preset);
+    const presetKey = String(req.params.preset);
+    const presetData = getPresetByKey(presetKey);
     if (!presetData) {
       return res.redirect('/admin/dashboard/clients/wizard');
     }
@@ -990,15 +991,15 @@ export function createAdminDashboardRoutes(
     const require_pkce = req.body.require_pkce === 'on';
 
     if (!id || !name || !domain) {
-      return res.redirect(`/admin/dashboard/clients/wizard/${encodeURIComponent(req.params.preset)}`);
+      return res.redirect(`/admin/dashboard/clients/wizard/${encodeURIComponent(presetKey)}`);
     }
     if (!/^[a-z0-9][a-z0-9_-]*$/.test(id) || id.length > 64) {
-      return res.redirect(`/admin/dashboard/clients/wizard/${encodeURIComponent(req.params.preset)}`);
+      return res.redirect(`/admin/dashboard/clients/wizard/${encodeURIComponent(presetKey)}`);
     }
 
     const existing = db.getOIDCClient(id);
     if (existing) {
-      return res.redirect(`/admin/dashboard/clients/wizard/${encodeURIComponent(req.params.preset)}`);
+      return res.redirect(`/admin/dashboard/clients/wizard/${encodeURIComponent(presetKey)}`);
     }
 
     // Build redirect URIs from template

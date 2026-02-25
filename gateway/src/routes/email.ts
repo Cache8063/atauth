@@ -128,7 +128,7 @@ export function createEmailRouter(
         throw new HttpError(401, 'unauthorized', 'Authentication required');
       }
 
-      const { email } = req.params;
+      const email = String(req.params.email);
 
       if (!email || !isValidEmail(email)) {
         throw new HttpError(400, 'invalid_request', 'Invalid email address');

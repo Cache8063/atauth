@@ -188,9 +188,10 @@ export function createAdminRoutes(
    * Get application configuration (without secret)
    */
   router.get('/apps/:id', requireAdmin, async (req: Request, res: Response) => {
-    const app = db.getApp(req.params.id);
+    const id = String(req.params.id);
+    const app = db.getApp(id);
     if (!app) {
-      throw httpError.notFound('app_not_found', `Application '${req.params.id}' not found`);
+      throw httpError.notFound('app_not_found', `Application '${id}' not found`);
     }
 
     res.json({
@@ -206,15 +207,16 @@ export function createAdminRoutes(
    * Update application configuration
    */
   router.put('/apps/:id', requireAdmin, async (req: Request, res: Response) => {
-    const existing = db.getApp(req.params.id);
+    const id = String(req.params.id);
+    const existing = db.getApp(id);
     if (!existing) {
-      throw httpError.notFound('app_not_found', `Application '${req.params.id}' not found`);
+      throw httpError.notFound('app_not_found', `Application '${id}' not found`);
     }
 
     const { name, token_ttl_seconds, callback_url, rotate_secret } = req.body;
 
     const updated = {
-      id: req.params.id,
+      id,
       name: name || existing.name,
       hmac_secret: rotate_secret ? generateHmacSecret() : existing.hmac_secret,
       token_ttl_seconds: token_ttl_seconds || existing.token_ttl_seconds,
@@ -224,9 +226,9 @@ export function createAdminRoutes(
     db.upsertApp(updated);
 
     if (rotate_secret) {
-      db.logAuditEvent('app.secret_rotate', 'admin', req.params.id, 'HMAC secret rotated', clientIp(req));
+      db.logAuditEvent('app.secret_rotate', 'admin', id, 'HMAC secret rotated', clientIp(req));
     } else {
-      db.logAuditEvent('app.update', 'admin', req.params.id, `Updated app config`, clientIp(req));
+      db.logAuditEvent('app.update', 'admin', id, `Updated app config`, clientIp(req));
     }
 
     const response: Record<string, unknown> = {
@@ -360,9 +362,10 @@ export function createAdminRoutes(
    * Get OIDC client details
    */
   router.get('/oidc/clients/:id', requireAdmin, async (req: Request, res: Response) => {
-    const client = db.getOIDCClient(req.params.id);
+    const id = String(req.params.id);
+    const client = db.getOIDCClient(id);
     if (!client) {
-      throw httpError.notFound('client_not_found', `OIDC client '${req.params.id}' not found`);
+      throw httpError.notFound('client_not_found', `OIDC client '${id}' not found`);
     }
 
     res.json({
@@ -386,9 +389,10 @@ export function createAdminRoutes(
    * Update OIDC client
    */
   router.put('/oidc/clients/:id', requireAdmin, async (req: Request, res: Response) => {
-    const existing = db.getOIDCClient(req.params.id);
+    const id = String(req.params.id);
+    const existing = db.getOIDCClient(id);
     if (!existing) {
-      throw httpError.notFound('client_not_found', `OIDC client '${req.params.id}' not found`);
+      throw httpError.notFound('client_not_found', `OIDC client '${id}' not found`);
     }
 
     const {
@@ -403,7 +407,7 @@ export function createAdminRoutes(
       refresh_token_ttl_seconds,
     } = req.body;
 
-    db.updateOIDCClient(req.params.id, {
+    db.updateOIDCClient(id, {
       redirect_uris: redirect_uris ?? existing.redirect_uris,
       grant_types: grant_types ?? existing.grant_types,
       allowed_scopes: allowed_scopes ?? existing.allowed_scopes,
@@ -416,16 +420,16 @@ export function createAdminRoutes(
 
     // Update app name if provided
     if (name) {
-      const app = db.getApp(req.params.id);
+      const app = db.getApp(id);
       if (app) {
         db.upsertApp({ ...app, name });
       }
     }
 
-    db.logAuditEvent('oidc_client.update', 'admin', req.params.id, 'Updated OIDC client config', clientIp(req));
+    db.logAuditEvent('oidc_client.update', 'admin', id, 'Updated OIDC client config', clientIp(req));
 
     res.json({
-      id: req.params.id,
+      id,
       message: 'OIDC client updated',
     });
   });
@@ -435,13 +439,14 @@ export function createAdminRoutes(
    * Delete OIDC client
    */
   router.delete('/oidc/clients/:id', requireAdmin, async (req: Request, res: Response) => {
-    const existing = db.getOIDCClient(req.params.id);
+    const id = String(req.params.id);
+    const existing = db.getOIDCClient(id);
     if (!existing) {
-      throw httpError.notFound('client_not_found', `OIDC client '${req.params.id}' not found`);
+      throw httpError.notFound('client_not_found', `OIDC client '${id}' not found`);
     }
 
-    db.deleteApp(req.params.id);
-    db.logAuditEvent('oidc_client.delete', 'admin', req.params.id, `Deleted OIDC client "${existing.name}"`, clientIp(req));
+    db.deleteApp(id);
+    db.logAuditEvent('oidc_client.delete', 'admin', id, `Deleted OIDC client "${existing.name}"`, clientIp(req));
 
     res.json({
       message: 'OIDC client deleted',
@@ -453,19 +458,20 @@ export function createAdminRoutes(
    * Rotate OIDC client secret
    */
   router.post('/oidc/clients/:id/rotate-secret', requireAdmin, async (req: Request, res: Response) => {
-    const existing = db.getOIDCClient(req.params.id);
+    const id = String(req.params.id);
+    const existing = db.getOIDCClient(id);
     if (!existing) {
-      throw httpError.notFound('client_not_found', `OIDC client '${req.params.id}' not found`);
+      throw httpError.notFound('client_not_found', `OIDC client '${id}' not found`);
     }
 
     const clientSecret = crypto.randomBytes(32).toString('hex');
     const clientSecretHash = crypto.createHash('sha256').update(clientSecret).digest('hex');
 
-    db.updateOIDCClientSecret(req.params.id, clientSecretHash);
-    db.logAuditEvent('oidc_client.secret_rotate', 'admin', req.params.id, 'Client secret rotated', clientIp(req));
+    db.updateOIDCClientSecret(id, clientSecretHash);
+    db.logAuditEvent('oidc_client.secret_rotate', 'admin', id, 'Client secret rotated', clientIp(req));
 
     res.json({
-      id: req.params.id,
+      id,
       client_secret: clientSecret,
       message: 'Client secret rotated. Update your application configuration!',
     });
@@ -504,8 +510,9 @@ export function createAdminRoutes(
    * Revoke a specific session
    */
   router.delete('/sessions/:id', requireAdmin, async (req: Request, res: Response) => {
-    db.deleteSession(req.params.id);
-    db.logAuditEvent('session.revoke', 'admin', req.params.id, 'Session revoked', clientIp(req));
+    const id = String(req.params.id);
+    db.deleteSession(id);
+    db.logAuditEvent('session.revoke', 'admin', id, 'Session revoked', clientIp(req));
     res.json({ message: 'Session revoked' });
   });
 
@@ -575,7 +582,7 @@ export function createAdminRoutes(
    * Get user details including MFA status and passkeys
    */
   router.get('/users/:did', requireAdmin, async (req: Request, res: Response) => {
-    const { did } = req.params;
+    const did = String(req.params.did);
 
     const passkeys = passkeyService?.listPasskeys(did) || [];
     const mfaStatus = mfaService?.getMFAStatus(did, passkeys.length) || {
@@ -610,7 +617,7 @@ export function createAdminRoutes(
    * Reset MFA for a user (admin override)
    */
   router.delete('/users/:did/mfa', requireAdmin, async (req: Request, res: Response) => {
-    const { did } = req.params;
+    const did = String(req.params.did);
 
     if (mfaService) {
       mfaService.disableTOTP(did);
@@ -628,7 +635,8 @@ export function createAdminRoutes(
    * Delete a passkey for a user (admin override)
    */
   router.delete('/users/:did/passkeys/:passkeyId', requireAdmin, async (req: Request, res: Response) => {
-    const { did, passkeyId } = req.params;
+    const did = String(req.params.did);
+    const passkeyId = String(req.params.passkeyId);
 
     if (passkeyService) {
       const success = passkeyService.deletePasskey(did, passkeyId);
@@ -699,8 +707,9 @@ export function createAdminRoutes(
    * Remove an allowed origin
    */
   router.delete('/proxy/origins/:id', requireAdmin, async (req: Request, res: Response) => {
-    db.removeProxyAllowedOrigin(parseInt(req.params.id, 10));
-    db.logAuditEvent('proxy.origin_remove', 'admin', req.params.id, 'Removed proxy origin', clientIp(req));
+    const id = String(req.params.id);
+    db.removeProxyAllowedOrigin(parseInt(id, 10));
+    db.logAuditEvent('proxy.origin_remove', 'admin', id, 'Removed proxy origin', clientIp(req));
     res.json({ message: 'Origin removed' });
   });
 
@@ -722,8 +731,9 @@ export function createAdminRoutes(
    * Revoke a proxy session
    */
   router.delete('/proxy/sessions/:id', requireAdmin, async (req: Request, res: Response) => {
-    db.deleteProxySession(req.params.id);
-    db.logAuditEvent('proxy.session_revoke', 'admin', req.params.id, 'Proxy session revoked', clientIp(req));
+    const id = String(req.params.id);
+    db.deleteProxySession(id);
+    db.logAuditEvent('proxy.session_revoke', 'admin', id, 'Proxy session revoked', clientIp(req));
     res.json({ message: 'Proxy session revoked' });
   });
 
@@ -806,8 +816,9 @@ export function createAdminRoutes(
    * Delete an access rule.
    */
   router.delete('/proxy/access/:id', requireAdmin, async (req: Request, res: Response) => {
-    db.deleteProxyAccessRule(parseInt(req.params.id, 10));
-    db.logAuditEvent('proxy.access_rule_delete', 'admin', req.params.id, 'Deleted access rule', clientIp(req));
+    const id = String(req.params.id);
+    db.deleteProxyAccessRule(parseInt(id, 10));
+    db.logAuditEvent('proxy.access_rule_delete', 'admin', id, 'Deleted access rule', clientIp(req));
     res.json({ message: 'Access rule deleted' });
   });
 
