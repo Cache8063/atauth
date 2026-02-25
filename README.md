@@ -45,7 +45,7 @@ Any app that supports OpenID Connect can use ATAuth. No custom integration neede
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/Cache8063/atauth.git
+git clone https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth.git
 cd atauth
 cp gateway/.env.example .env
 ```
