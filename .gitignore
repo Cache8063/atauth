@@ -3,10 +3,9 @@
 Cargo.lock
 
 # TypeScript
-ts/node_modules/
+node_modules/
 ts/dist/
 ts/.turbo/
-gateway/node_modules/
 gateway/dist/
 gateway/.turbo/
 
