@@ -73,6 +73,16 @@ The setup wizard includes presets for:
 | Portainer | OIDC (built-in) |
 | Outline | OIDC (built-in) |
 | Mealie | OIDC (built-in) |
+| Paperless-ngx | OIDC (built-in) |
+| Vaultwarden | OIDC (built-in) |
+| Miniflux | OIDC (built-in) |
+| Mattermost | OIDC (built-in) |
+| Vikunja | OIDC (built-in) |
+| Plane | OIDC (built-in) |
+| GoToSocial | OIDC (built-in) |
+| Stirling-PDF | OIDC (built-in) |
+| Tandoor Recipes | OIDC (built-in) |
+| FreshRSS | OIDC (built-in) |
 | Any web service | Forward-auth proxy (nginx `auth_request`) |
 
 ## OIDC Discovery
@@ -144,6 +154,7 @@ With a self-hosted PDS, ATAuth becomes a fully independent auth system:
 
 ## Documentation
 
+- [Development Guide](CLAUDE.md)
 - [Homelab Deployment Guide](docs/HOMELAB.md)
 - [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)

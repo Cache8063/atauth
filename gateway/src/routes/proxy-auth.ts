@@ -208,6 +208,11 @@ export function createProxyAuthRoutes(
       sanitizedHandle = sanitizedHandle + '.bsky.social';
     }
 
+    // Validate handle format: domain-like segments separated by dots
+    if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(sanitizedHandle)) {
+      return res.status(400).json({ error: 'invalid_handle', message: 'Invalid handle format' });
+    }
+
     // Look up the pending auth request
     const authRequest = db.getProxyAuthRequest(auth_request_id);
     if (!authRequest) {

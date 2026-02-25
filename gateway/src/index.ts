@@ -103,6 +103,12 @@ const config = {
 async function main(): Promise<void> {
   console.log('Starting ATAuth Gateway...');
 
+  // Validate CORS configuration
+  if (config.corsOrigins.includes('*')) {
+    console.error('CORS_ORIGINS cannot include "*" — credentials mode requires explicit origins');
+    process.exit(1);
+  }
+
   // Validate required secrets when features are enabled
   const missing: string[] = [];
   if (config.oidc.enabled && !config.oidc.keySecret) {
@@ -226,8 +232,8 @@ async function main(): Promise<void> {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Session-Id'],
   }));
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: '16kb' }));
+  app.use(express.urlencoded({ extended: true, limit: '16kb' }));
 
   // Request logging
   app.use((req, _res, next) => {
@@ -382,8 +388,9 @@ async function main(): Promise<void> {
     const emailCodesDeleted = db.cleanupExpiredEmailVerificationCodes();
     const proxySessionsDeleted = db.cleanupExpiredProxySessions();
     const proxyAuthRequestsDeleted = db.cleanupExpiredProxyAuthRequests();
+    const auditLogsDeleted = db.cleanupOldAuditLogs();
 
-    const total = statesDeleted + sessionsDeleted + authCodesDeleted + refreshTokensDeleted + emailCodesDeleted + proxySessionsDeleted + proxyAuthRequestsDeleted;
+    const total = statesDeleted + sessionsDeleted + authCodesDeleted + refreshTokensDeleted + emailCodesDeleted + proxySessionsDeleted + proxyAuthRequestsDeleted + auditLogsDeleted;
     if (total > 0) {
       console.log(`Cleanup: ${statesDeleted} OAuth states, ${sessionsDeleted} sessions, ${authCodesDeleted} auth codes, ${refreshTokensDeleted} refresh tokens, ${emailCodesDeleted} email codes, ${proxySessionsDeleted} proxy sessions, ${proxyAuthRequestsDeleted} proxy auth requests`);
     }

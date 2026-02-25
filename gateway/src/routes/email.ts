@@ -130,6 +130,10 @@ export function createEmailRouter(
 
       const { email } = req.params;
 
+      if (!email || !isValidEmail(email)) {
+        throw new HttpError(400, 'invalid_request', 'Invalid email address');
+      }
+
       const result = emailService.removeEmail(did, email);
 
       if (!result.success) {

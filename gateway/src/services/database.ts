@@ -305,6 +305,21 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_proxy_access_rules_origin ON proxy_access_rules(origin_id);
     `);
 
+    // Audit log for admin operations
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        target TEXT,
+        details TEXT,
+        ip TEXT,
+        timestamp INTEGER DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+    `);
+
     // Ensure sentinel proxy-auth app exists for forward-auth OAuth flows
     const proxyApp = this.db.prepare('SELECT 1 FROM apps WHERE id = ?').get('proxy-auth');
     if (!proxyApp) {
@@ -534,6 +549,28 @@ export class DatabaseService {
 
   close(): void {
     this.db.close();
+  }
+
+  // ===== Audit Log Methods =====
+
+  logAuditEvent(action: string, actor: string, target?: string, details?: string, ip?: string): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO audit_log (action, actor, target, details, ip)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    stmt.run(action, actor, target || null, details || null, ip || null);
+  }
+
+  getAuditLog(limit = 100, offset = 0): Array<{ id: number; action: string; actor: string; target: string | null; details: string | null; ip: string | null; timestamp: number }> {
+    const stmt = this.db.prepare('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ? OFFSET ?');
+    return stmt.all(limit, offset) as Array<{ id: number; action: string; actor: string; target: string | null; details: string | null; ip: string | null; timestamp: number }>;
+  }
+
+  cleanupOldAuditLogs(): number {
+    const ninetyDaysAgo = Math.floor(Date.now() / 1000) - (90 * 24 * 60 * 60);
+    const stmt = this.db.prepare('DELETE FROM audit_log WHERE timestamp < ?');
+    const result = stmt.run(ninetyDaysAgo);
+    return result.changes;
   }
 
   // ===== OIDC Key Management Methods =====

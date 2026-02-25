@@ -18,6 +18,10 @@ import type { OIDCService } from '../services/oidc/index.js';
 import type { PasskeyService } from '../services/passkey.js';
 import type { MFAService } from '../services/mfa.js';
 
+function clientIp(req: Request): string {
+  return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+}
+
 /**
  * Constant-time string comparison to prevent timing attacks.
  */
@@ -167,6 +171,8 @@ export function createAdminRoutes(
       callback_url,
     });
 
+    db.logAuditEvent('app.create', 'admin', id, `Created app "${name}"`, clientIp(req));
+
     res.status(201).json({
       id,
       name,
@@ -216,6 +222,12 @@ export function createAdminRoutes(
     };
 
     db.upsertApp(updated);
+
+    if (rotate_secret) {
+      db.logAuditEvent('app.secret_rotate', 'admin', req.params.id, 'HMAC secret rotated', clientIp(req));
+    } else {
+      db.logAuditEvent('app.update', 'admin', req.params.id, `Updated app config`, clientIp(req));
+    }
 
     const response: Record<string, unknown> = {
       id: updated.id,
@@ -329,6 +341,8 @@ export function createAdminRoutes(
       refresh_token_ttl_seconds: refresh_token_ttl_seconds || 604800,
     });
 
+    db.logAuditEvent('oidc_client.create', 'admin', id, `Created OIDC client "${name}"`, clientIp(req));
+
     res.status(201).json({
       id,
       name,
@@ -408,6 +422,8 @@ export function createAdminRoutes(
       }
     }
 
+    db.logAuditEvent('oidc_client.update', 'admin', req.params.id, 'Updated OIDC client config', clientIp(req));
+
     res.json({
       id: req.params.id,
       message: 'OIDC client updated',
@@ -425,6 +441,7 @@ export function createAdminRoutes(
     }
 
     db.deleteApp(req.params.id);
+    db.logAuditEvent('oidc_client.delete', 'admin', req.params.id, `Deleted OIDC client "${existing.name}"`, clientIp(req));
 
     res.json({
       message: 'OIDC client deleted',
@@ -445,6 +462,7 @@ export function createAdminRoutes(
     const clientSecretHash = crypto.createHash('sha256').update(clientSecret).digest('hex');
 
     db.updateOIDCClientSecret(req.params.id, clientSecretHash);
+    db.logAuditEvent('oidc_client.secret_rotate', 'admin', req.params.id, 'Client secret rotated', clientIp(req));
 
     res.json({
       id: req.params.id,
@@ -487,6 +505,7 @@ export function createAdminRoutes(
    */
   router.delete('/sessions/:id', requireAdmin, async (req: Request, res: Response) => {
     db.deleteSession(req.params.id);
+    db.logAuditEvent('session.revoke', 'admin', req.params.id, 'Session revoked', clientIp(req));
     res.json({ message: 'Session revoked' });
   });
 
@@ -501,6 +520,7 @@ export function createAdminRoutes(
     }
 
     const count = db.revokeAllSessionsForUser(did, app_id);
+    db.logAuditEvent('session.revoke_all', 'admin', did, `Revoked ${count} sessions${app_id ? ` for app ${app_id}` : ''}`, clientIp(req));
     res.json({
       sessions_revoked: count,
     });
@@ -541,6 +561,7 @@ export function createAdminRoutes(
 
     const { algorithm } = req.body;
     await oidcService.keyManager.rotateKeys(algorithm || 'ES256');
+    db.logAuditEvent('key.rotate', 'admin', undefined, `Rotated signing key (${algorithm || 'ES256'})`, clientIp(req));
 
     res.json({
       message: 'Signing key rotated',
@@ -595,6 +616,8 @@ export function createAdminRoutes(
       mfaService.disableTOTP(did);
     }
 
+    db.logAuditEvent('user.mfa_reset', 'admin', did, 'MFA disabled by admin', clientIp(req));
+
     res.json({
       message: 'MFA disabled for user',
     });
@@ -613,6 +636,8 @@ export function createAdminRoutes(
         throw httpError.notFound('passkey_not_found', 'Passkey not found');
       }
     }
+
+    db.logAuditEvent('user.passkey_delete', 'admin', did, `Deleted passkey ${passkeyId}`, clientIp(req));
 
     res.json({
       message: 'Passkey deleted',
@@ -658,6 +683,7 @@ export function createAdminRoutes(
 
     try {
       const created = db.addProxyAllowedOrigin(origin, name);
+      db.logAuditEvent('proxy.origin_add', 'admin', origin, `Added origin "${name}"`, clientIp(req));
       res.status(201).json(created);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
@@ -674,6 +700,7 @@ export function createAdminRoutes(
    */
   router.delete('/proxy/origins/:id', requireAdmin, async (req: Request, res: Response) => {
     db.removeProxyAllowedOrigin(parseInt(req.params.id, 10));
+    db.logAuditEvent('proxy.origin_remove', 'admin', req.params.id, 'Removed proxy origin', clientIp(req));
     res.json({ message: 'Origin removed' });
   });
 
@@ -696,6 +723,7 @@ export function createAdminRoutes(
    */
   router.delete('/proxy/sessions/:id', requireAdmin, async (req: Request, res: Response) => {
     db.deleteProxySession(req.params.id);
+    db.logAuditEvent('proxy.session_revoke', 'admin', req.params.id, 'Proxy session revoked', clientIp(req));
     res.json({ message: 'Proxy session revoked' });
   });
 
@@ -768,6 +796,8 @@ export function createAdminRoutes(
       description: description || null,
     });
 
+    db.logAuditEvent('proxy.access_rule_create', 'admin', String(rule.id), `Created ${rule_type} rule for ${subject_type}:${subject_value}`, clientIp(req));
+
     res.status(201).json(rule);
   });
 
@@ -777,6 +807,7 @@ export function createAdminRoutes(
    */
   router.delete('/proxy/access/:id', requireAdmin, async (req: Request, res: Response) => {
     db.deleteProxyAccessRule(parseInt(req.params.id, 10));
+    db.logAuditEvent('proxy.access_rule_delete', 'admin', req.params.id, 'Deleted access rule', clientIp(req));
     res.json({ message: 'Access rule deleted' });
   });
 
@@ -805,6 +836,19 @@ export function createAdminRoutes(
 
     const result = checkAccess(did, handle, rules);
     res.json(result);
+  });
+
+  // ===== Audit Log =====
+
+  /**
+   * GET /admin/audit-log
+   * List audit log entries (most recent first)
+   */
+  router.get('/audit-log', requireAdmin, async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+    const entries = db.getAuditLog(limit, offset);
+    res.json({ entries, limit, offset });
   });
 
   // ===== Stats =====

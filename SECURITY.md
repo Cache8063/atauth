@@ -15,11 +15,11 @@ Instead, please send an email describing the vulnerability to the maintainers. I
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.2.x   | Yes                |
-| 1.0.x   | Security fixes only |
-| < 1.0   | No                 |
+| Version | Supported           |
+| ------- | ------------------- |
+| 2.x     | Yes                 |
+| 1.x     | Security fixes only |
+| < 1.0   | No                  |
 
 ## Security Best Practices
 

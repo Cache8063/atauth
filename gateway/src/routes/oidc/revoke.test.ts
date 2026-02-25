@@ -46,6 +46,7 @@ function createRefreshToken(db: DatabaseService, token: string, clientId = 'test
     scope: 'openid profile',
     expires_at: new Date(Date.now() + 86400 * 1000),
     family_id: `family-${Date.now()}`,
+    revoked: false,
   });
   return tokenHash;
 }
