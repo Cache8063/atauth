@@ -154,7 +154,6 @@ With a self-hosted PDS, ATAuth becomes a fully independent auth system:
 
 ## Documentation
 
-- [Development Guide](CLAUDE.md)
 - [Homelab Deployment Guide](docs/HOMELAB.md)
 - [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)

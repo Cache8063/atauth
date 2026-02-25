@@ -10,6 +10,10 @@ gateway/node_modules/
 gateway/dist/
 gateway/.turbo/
 
+# Claude Code
+CLAUDE.md
+.claude/
+
 # IDE
 .idea/
 .vscode/
