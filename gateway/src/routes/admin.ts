@@ -635,7 +635,7 @@ export function createAdminRoutes(
    * Add an allowed origin for forward-auth
    *
    * Body:
-   * - origin: Full origin URL (e.g. "https://search.arcnode.xyz")
+   * - origin: Full origin URL (e.g. "https://search.example.com")
    * - name: Display name (e.g. "SearXNG")
    */
   router.post('/proxy/origins', requireAdmin, async (req: Request, res: Response) => {
@@ -725,7 +725,7 @@ export function createAdminRoutes(
    * - origin_id: number | null (null = global rule)
    * - rule_type: "allow" | "deny"
    * - subject_type: "did" | "handle_pattern"
-   * - subject_value: string (DID or pattern like "*.arcnode.xyz")
+   * - subject_value: string (DID or pattern like "*.example.com")
    * - description: string (optional label)
    */
   router.post('/proxy/access', requireAdmin, async (req: Request, res: Response) => {

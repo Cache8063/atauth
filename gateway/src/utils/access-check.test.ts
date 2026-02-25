@@ -24,21 +24,21 @@ describe('matchHandlePattern', () => {
   });
 
   it('should match suffix pattern "*.domain"', () => {
-    expect(matchHandlePattern('*.arcnode.xyz', 'bkb.arcnode.xyz')).toBe(true);
-    expect(matchHandlePattern('*.arcnode.xyz', 'other.arcnode.xyz')).toBe(true);
+    expect(matchHandlePattern('*.example.com', 'alice.example.com')).toBe(true);
+    expect(matchHandlePattern('*.example.com', 'other.example.com')).toBe(true);
   });
 
   it('should not match suffix pattern against different domain', () => {
-    expect(matchHandlePattern('*.arcnode.xyz', 'user.bsky.social')).toBe(false);
-    expect(matchHandlePattern('*.arcnode.xyz', 'arcnode.xyz')).toBe(false);
+    expect(matchHandlePattern('*.example.com', 'user.bsky.social')).toBe(false);
+    expect(matchHandlePattern('*.example.com', 'example.com')).toBe(false);
   });
 
   it('should match exact handle', () => {
-    expect(matchHandlePattern('bkb.arcnode.xyz', 'bkb.arcnode.xyz')).toBe(true);
+    expect(matchHandlePattern('alice.example.com', 'alice.example.com')).toBe(true);
   });
 
   it('should not match different exact handle', () => {
-    expect(matchHandlePattern('bkb.arcnode.xyz', 'other.arcnode.xyz')).toBe(false);
+    expect(matchHandlePattern('alice.example.com', 'other.example.com')).toBe(false);
   });
 
   it('should be case-sensitive', () => {

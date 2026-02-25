@@ -118,14 +118,14 @@ describe('GET /auth/verify', () => {
     const session = createTestSession(db);
     const ticket = createAuthTicket(
       session.id, session.did, session.handle,
-      'https://search.arcnode.xyz', TEST_SECRET,
+      'https://search.example.com', TEST_SECRET,
     );
 
     const res = await request(app)
       .get('/auth/verify')
-      .set('X-Original-URL', `https://search.arcnode.xyz/path?_atauth_ticket=${ticket}`)
+      .set('X-Original-URL', `https://search.example.com/path?_atauth_ticket=${ticket}`)
       .set('X-Forwarded-Proto', 'https')
-      .set('X-Forwarded-Host', 'search.arcnode.xyz');
+      .set('X-Forwarded-Host', 'search.example.com');
 
     expect(res.status).toBe(200);
     expect(res.headers['x-auth-did']).toBe(session.did);
@@ -165,7 +165,7 @@ describe('GET /auth/proxy/login', () => {
 
   it('should redirect with ticket for existing session (silent SSO)', async () => {
     // Add allowed origin
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     // Create session and cookie
     const session = createTestSession(db);
@@ -173,23 +173,23 @@ describe('GET /auth/proxy/login', () => {
 
     const res = await request(app)
       .get('/auth/proxy/login')
-      .query({ rd: 'https://search.arcnode.xyz/path' })
+      .query({ rd: 'https://search.example.com/path' })
       .set('Cookie', `${SESSION_COOKIE_NAME}=${sessionCookie}`);
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('search.arcnode.xyz');
+    expect(res.headers.location).toContain('search.example.com');
     expect(res.headers.location).toContain('_atauth_ticket=');
   });
 
   it('should deny silent SSO when access rules block user', async () => {
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
-    // Only allow arcnode.xyz handles
+    // Only allow example.com handles
     db.createProxyAccessRule({
       origin_id: null,
       rule_type: 'allow',
       subject_type: 'handle_pattern',
-      subject_value: '*.arcnode.xyz',
+      subject_value: '*.example.com',
       description: null,
     });
 
@@ -198,7 +198,7 @@ describe('GET /auth/proxy/login', () => {
 
     const res = await request(app)
       .get('/auth/proxy/login')
-      .query({ rd: 'https://search.arcnode.xyz/path' })
+      .query({ rd: 'https://search.example.com/path' })
       .set('Cookie', `${SESSION_COOKIE_NAME}=${sessionCookie}`);
 
     expect(res.status).toBe(403);
@@ -206,14 +206,14 @@ describe('GET /auth/proxy/login', () => {
   });
 
   it('should allow silent SSO when no access rules exist (open mode)', async () => {
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     const session = createTestSession(db);
     const sessionCookie = createSessionCookie(session.id, TEST_SECRET, 604800);
 
     const res = await request(app)
       .get('/auth/proxy/login')
-      .query({ rd: 'https://search.arcnode.xyz/path' })
+      .query({ rd: 'https://search.example.com/path' })
       .set('Cookie', `${SESSION_COOKIE_NAME}=${sessionCookie}`);
 
     expect(res.status).toBe(302);
@@ -221,11 +221,11 @@ describe('GET /auth/proxy/login', () => {
   });
 
   it('should render login page when no session exists', async () => {
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     const res = await request(app)
       .get('/auth/proxy/login')
-      .query({ rd: 'https://search.arcnode.xyz/path' });
+      .query({ rd: 'https://search.example.com/path' });
 
     expect(res.status).toBe(200);
     expect(res.text).toContain('Sign in to continue');
@@ -318,7 +318,7 @@ describe('POST /auth/proxy/login', () => {
     const now = Math.floor(Date.now() / 1000);
     db.saveProxyAuthRequest({
       id: 'expired-req',
-      redirect_uri: 'https://search.arcnode.xyz/',
+      redirect_uri: 'https://search.example.com/',
       created_at: now - 700,
       expires_at: now - 100,
     });
@@ -335,7 +335,7 @@ describe('POST /auth/proxy/login', () => {
     const now = Math.floor(Date.now() / 1000);
     db.saveProxyAuthRequest({
       id: 'valid-req',
-      redirect_uri: 'https://search.arcnode.xyz/',
+      redirect_uri: 'https://search.example.com/',
       created_at: now,
       expires_at: now + 600,
     });
@@ -363,7 +363,7 @@ describe('POST /auth/proxy/login', () => {
     const now = Math.floor(Date.now() / 1000);
     db.saveProxyAuthRequest({
       id: 'req1',
-      redirect_uri: 'https://search.arcnode.xyz/',
+      redirect_uri: 'https://search.example.com/',
       created_at: now,
       expires_at: now + 600,
     });
@@ -388,7 +388,7 @@ describe('POST /auth/proxy/login', () => {
     const now = Math.floor(Date.now() / 1000);
     db.saveProxyAuthRequest({
       id: 'req2',
-      redirect_uri: 'https://search.arcnode.xyz/',
+      redirect_uri: 'https://search.example.com/',
       created_at: now,
       expires_at: now + 600,
     });
@@ -413,7 +413,7 @@ describe('POST /auth/proxy/login', () => {
     const now = Math.floor(Date.now() / 1000);
     db.saveProxyAuthRequest({
       id: 'req3',
-      redirect_uri: 'https://search.arcnode.xyz/',
+      redirect_uri: 'https://search.example.com/',
       created_at: now,
       expires_at: now + 600,
     });
@@ -432,7 +432,7 @@ describe('POST /auth/proxy/login', () => {
     const now = Math.floor(Date.now() / 1000);
     db.saveProxyAuthRequest({
       id: 'req4',
-      redirect_uri: 'https://search.arcnode.xyz/',
+      redirect_uri: 'https://search.example.com/',
       created_at: now,
       expires_at: now + 600,
     });
@@ -493,12 +493,12 @@ describe('GET /auth/proxy/callback', () => {
     const now = Math.floor(Date.now() / 1000);
 
     // Register the allowed origin (required for access check)
-    db.addProxyAllowedOrigin('https://search.arcnode.xyz', 'SearXNG');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
 
     // Set up proxy auth request
     db.saveProxyAuthRequest({
       id: 'auth-req-1',
-      redirect_uri: 'https://search.arcnode.xyz/path?q=test',
+      redirect_uri: 'https://search.example.com/path?q=test',
       created_at: now,
       expires_at: now + 600,
     });
@@ -508,7 +508,7 @@ describe('GET /auth/proxy/callback', () => {
       state: 'oauth-state-1',
       code_verifier: 'auth-req-1',
       app_id: 'proxy-auth',
-      redirect_uri: 'https://search.arcnode.xyz/path?q=test',
+      redirect_uri: 'https://search.example.com/path?q=test',
       created_at: now,
     });
 
@@ -523,7 +523,7 @@ describe('GET /auth/proxy/callback', () => {
 
     // Should redirect back to original URL with ticket
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('search.arcnode.xyz');
+    expect(res.headers.location).toContain('search.example.com');
     expect(res.headers.location).toContain('_atauth_ticket=');
 
     // Should set session cookie on ATAuth domain
@@ -556,7 +556,7 @@ describe('GET /auth/proxy/callback', () => {
       state: 'orphan-state',
       code_verifier: 'missing-auth-req',
       app_id: 'proxy-auth',
-      redirect_uri: 'https://search.arcnode.xyz/',
+      redirect_uri: 'https://search.example.com/',
       created_at: now,
     });
 
@@ -578,7 +578,7 @@ describe('GET /auth/proxy/callback', () => {
 
     db.saveProxyAuthRequest({
       id: 'auth-req-err',
-      redirect_uri: 'https://search.arcnode.xyz/',
+      redirect_uri: 'https://search.example.com/',
       created_at: now,
       expires_at: now + 600,
     });
@@ -587,7 +587,7 @@ describe('GET /auth/proxy/callback', () => {
       state: 'error-state',
       code_verifier: 'auth-req-err',
       app_id: 'proxy-auth',
-      redirect_uri: 'https://search.arcnode.xyz/',
+      redirect_uri: 'https://search.example.com/',
       created_at: now,
     });
 

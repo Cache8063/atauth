@@ -20,7 +20,7 @@ export interface ProxySession {
 /** An origin allowed to use forward-auth */
 export interface ProxyAllowedOrigin {
   id: number;
-  origin: string; // e.g. "https://search.arcnode.xyz"
+  origin: string; // e.g. "https://search.example.com"
   name: string;   // e.g. "SearXNG"
   created_at: number;
 }
