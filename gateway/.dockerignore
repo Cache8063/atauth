@@ -15,7 +15,7 @@ dist/
 .idea/
 
 # Test files
-*.test.ts
+**/*.test.ts
 __tests__/
 coverage/
 
