@@ -222,7 +222,8 @@ export function createAuthorizeRouter(
           body: JSON.stringify({})
         })
         .then(function(r) { return r.json(); })
-        .then(function(opts) {
+        .then(function(data) {
+          var opts = data.options || data;
           var pubKeyOpts = {
             challenge: b64urlToBuffer(opts.challenge),
             timeout: opts.timeout,
