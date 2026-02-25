@@ -5,35 +5,39 @@ ATAuth provides OIDC-based authentication for your homelab using AT Protocol ide
 ## Prerequisites
 
 - Docker and Docker Compose
-- A domain name with TLS (reverse proxy: Caddy, Traefik, or nginx)
+- A domain name with DNS pointing to your server
+- A reverse proxy that terminates TLS (Caddy, Traefik, or nginx)
 - Optional: Your own PDS for fully self-hosted identity
 
 ## Deploy
 
 ```bash
 git clone https://github.com/Cache8063/atauth.git
-cd atauth/gateway
-cp .env.example .env
+cd atauth
+cp gateway/.env.example .env
 ```
 
-Edit `.env` with your configuration. At minimum, set these required secrets:
+Edit `.env`:
 
-```bash
-# Generate and paste each value
-openssl rand -hex 32  # for ADMIN_TOKEN
-openssl rand -hex 32  # for OIDC_KEY_SECRET
-openssl rand -hex 32  # for MFA_ENCRYPTION_KEY (produces 64 hex chars)
-```
+1. Replace every `auth.yourdomain.com` with your actual domain
+2. Set `CORS_ORIGINS` to the domains of apps that will use ATAuth
+3. Generate three secrets (`openssl rand -hex 32` for each) and fill in `ADMIN_TOKEN`, `OIDC_KEY_SECRET`, and `MFA_ENCRYPTION_KEY`
 
-Also update `OAUTH_CLIENT_ID`, `OAUTH_REDIRECT_URI`, `OIDC_ISSUER`, and `WEBAUTHN_*` to match your domain.
+See `gateway/.env.example` for all available options including email, forward-auth proxy, and passkey configuration.
 
-Then start:
+Start the gateway:
 
 ```bash
 docker compose up -d
 ```
 
-The gateway runs on port 3100. Put a reverse proxy with TLS in front of it.
+The gateway runs on `127.0.0.1:3100`. Set up a reverse proxy with TLS (see [Reverse Proxy Configuration](#reverse-proxy-configuration) below).
+
+Verify it's running:
+
+```bash
+curl https://your-atauth-domain/.well-known/openid-configuration
+```
 
 ## Register Apps
 
@@ -43,6 +47,8 @@ Open `https://your-atauth-domain/admin/login`, enter your admin token, then use 
 
 - Audiobookshelf, Jellyfin, Gitea/Forgejo, Nextcloud, Immich
 - Grafana, Wiki.js, Portainer, Outline, Mealie
+- Paperless-ngx, Vaultwarden, Miniflux, Mattermost, Vikunja
+- Plane, GoToSocial, Stirling-PDF, Tandoor Recipes, FreshRSS
 
 Each preset auto-fills the correct redirect URI, scopes, and grant types.
 
@@ -84,7 +90,14 @@ This auto-discovers all endpoints. Most apps need:
 
 ## Forward-Auth Proxy
 
-For apps without OIDC support, ATAuth provides nginx `auth_request` based SSO.
+For apps without OIDC support, ATAuth provides nginx `auth_request` based SSO. Enable it in `.env`:
+
+```env
+FORWARD_AUTH_ENABLED=true
+FORWARD_AUTH_SESSION_SECRET=<generate-with-openssl-rand-hex-32>
+```
+
+Then:
 
 1. Register the origin in the admin dashboard under **Proxy Origins**
 2. Add access rules under **Access Rules**
@@ -117,7 +130,7 @@ location = /auth/verify {
 
 ```caddyfile
 auth.example.com {
-    reverse_proxy atauth:3100
+    reverse_proxy localhost:3100
 }
 ```
 
@@ -143,7 +156,7 @@ server {
     ssl_certificate_key /etc/ssl/private/auth.example.com.key;
 
     location / {
-        proxy_pass http://atauth:3100;
+        proxy_pass http://localhost:3100;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -180,7 +193,7 @@ Manage rules via the admin dashboard or API.
 # Backup the SQLite database
 docker compose exec atauth cp /app/data/gateway.db /app/data/gateway.db.backup
 
-# Or backup the volume
+# Or backup the entire data volume
 docker run --rm -v atauth_atauth-data:/data -v $(pwd):/backup alpine \
   tar czf /backup/atauth-backup.tar.gz -C /data .
 ```
@@ -206,14 +219,18 @@ docker compose up -d
 
 ### OIDC discovery returns 404
 
-Ensure your `OAUTH_CLIENT_ID` URL is publicly accessible and the gateway is running.
+Ensure `OAUTH_CLIENT_ID` in `.env` matches your public URL and the gateway is running. Check logs with `docker compose logs atauth`.
 
 ### Users can't authenticate
 
-1. Check the PDS is reachable from the ATAuth container
+1. Check the PDS is reachable from the ATAuth container: `docker compose exec atauth wget -qO- https://bsky.social/xrpc/_health`
 2. Verify the user's handle resolves correctly
 3. Check logs: `docker compose logs atauth`
 
 ### "invalid_redirect_uri"
 
 The redirect URI in the OIDC request must exactly match one registered for the client (including scheme, host, port, and path).
+
+### CORS errors in browser console
+
+Add the app's origin to `CORS_ORIGINS` in `.env` and restart: `docker compose restart atauth`.

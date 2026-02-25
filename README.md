@@ -27,52 +27,60 @@ Any app that supports OpenID Connect can use ATAuth. No custom integration neede
 ## Features
 
 - **Standard OIDC Provider**: Discovery, authorization, token, userinfo, revocation, JWKS endpoints
+- **Passkey Login**: WebAuthn/FIDO2 support -- users can register passkeys and skip the Bluesky OAuth flow
 - **Forward-Auth SSO Proxy**: nginx `auth_request` based single sign-on for any web service
-- **Admin Dashboard**: Web UI with setup wizard for common self-hosted apps
+- **Admin Dashboard**: Web UI with setup wizard for 20+ common self-hosted apps
 - **Access Control**: Per-user DID and handle pattern rules with deny-overrides
 - **PKCE Support**: Configurable per-client
 - **ES256 Signed JWTs**: Proper key rotation via JWKS endpoint
 
 ## Quick Start
 
+### Prerequisites
+
+- Docker and Docker Compose
+- A domain with a DNS record pointing to your server (e.g. `auth.yourdomain.com`)
+- A reverse proxy that terminates TLS (Caddy, Traefik, or nginx)
+
 ### 1. Clone and configure
 
 ```bash
 git clone https://github.com/Cache8063/atauth.git
-cd atauth/gateway
-cp .env.example .env
+cd atauth
+cp gateway/.env.example .env
 ```
 
-Edit `.env` -- replace `auth.yourdomain.com` with your actual domain in these fields:
+Edit `.env` -- replace every instance of `auth.yourdomain.com` with your actual domain:
 
 ```env
+# These must all use your real domain
 OAUTH_CLIENT_ID=https://auth.yourdomain.com/client-metadata.json
 OAUTH_REDIRECT_URI=https://auth.yourdomain.com/auth/callback
 OIDC_ISSUER=https://auth.yourdomain.com
 WEBAUTHN_RP_ID=auth.yourdomain.com
 WEBAUTHN_ORIGIN=https://auth.yourdomain.com
+CORS_ORIGINS=https://app1.yourdomain.com,https://app2.yourdomain.com
 ```
 
-Generate and fill in the required secrets:
+Generate and fill in the three required secrets (run the command once per value):
 
 ```bash
-openssl rand -hex 32  # Use output for each value below
+openssl rand -hex 32
 ```
 
 ```env
-ADMIN_TOKEN=<generated-value>
-OIDC_KEY_SECRET=<generated-value>
-MFA_ENCRYPTION_KEY=<generated-value>
+ADMIN_TOKEN=<paste-generated-value>
+OIDC_KEY_SECRET=<paste-generated-value>
+MFA_ENCRYPTION_KEY=<paste-generated-value>
 ```
 
 ### 2. Start the service
 
 ```bash
-cd ..  # back to repo root
 docker compose up -d
 ```
 
-The gateway runs on `127.0.0.1:3100`. It needs a reverse proxy with TLS in front of it. The simplest option is Caddy (auto-HTTPS):
+The gateway starts on `127.0.0.1:3100`. Put a reverse proxy with TLS in front of it. The simplest option is [Caddy](https://caddyserver.com/) (automatic HTTPS):
 
 ```caddyfile
 auth.yourdomain.com {
@@ -82,9 +90,30 @@ auth.yourdomain.com {
 
 See the [Homelab Deployment Guide](docs/HOMELAB.md) for Traefik and nginx examples.
 
-### 3. Register your first app
+### 3. Verify it's running
 
-Open `https://auth.yourdomain.com/admin/login`, enter your admin token, and use the setup wizard to register an app.
+```bash
+curl https://auth.yourdomain.com/.well-known/openid-configuration
+```
+
+You should get a JSON document with all the OIDC endpoints.
+
+### 4. Register your first app
+
+Open `https://auth.yourdomain.com/admin/login`, enter your `ADMIN_TOKEN`, and use the setup wizard to register an app. The wizard includes presets that auto-fill redirect URIs, scopes, and grant types.
+
+Save the returned **client secret** -- it is only shown once.
+
+### 5. Configure your app
+
+Point your app's OIDC settings to ATAuth's discovery URL:
+
+| Setting | Value |
+| --- | --- |
+| Discovery URL | `https://auth.yourdomain.com/.well-known/openid-configuration` |
+| Client ID | The ID you chose in the wizard |
+| Client Secret | The secret returned at registration |
+| Scopes | `openid profile` (add `email` if needed) |
 
 ## Supported Apps
 
@@ -114,19 +143,16 @@ The setup wizard includes presets for:
 | FreshRSS | OIDC (built-in) |
 | Any web service | Forward-auth proxy (nginx `auth_request`) |
 
-## OIDC Discovery
-
-Once running, your OIDC discovery document is at:
-
-```text
-https://your-domain/.well-known/openid-configuration
-```
-
-Configure any OIDC-compatible app with this URL and it will auto-discover all endpoints.
-
 ## Forward-Auth Proxy
 
-For apps without OIDC support, ATAuth provides an nginx `auth_request` proxy:
+For apps without OIDC support, ATAuth provides nginx `auth_request` based SSO. Enable it in `.env`:
+
+```env
+FORWARD_AUTH_ENABLED=true
+FORWARD_AUTH_SESSION_SECRET=<generate-with-openssl-rand-hex-32>
+```
+
+Then configure nginx:
 
 ```nginx
 location / {
@@ -157,6 +183,8 @@ With a self-hosted PDS, ATAuth becomes a fully independent auth system:
 - No dependency on Bluesky servers
 - Works on air-gapped networks
 - Same security model as enterprise OAuth
+
+The gateway auto-discovers the user's PDS from their handle. No special configuration needed.
 
 ## Architecture
 

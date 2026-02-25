@@ -1,14 +1,10 @@
 # ATAuth - Self-Hosted AT Protocol Authentication
 #
 # Quick Start:
-#   1. Copy .env.example to .env and configure
-#   2. docker compose up -d
-#   3. Register your first app via the admin API
-#
-# For use with your own PDS (recommended):
-#   - Set OAUTH_CLIENT_ID to your gateway's public URL
-#   - Point your apps to authenticate via this gateway
-#   - Users sign in with their AT Protocol handle (@user.your-pds.com)
+#   1. cp gateway/.env.example .env
+#   2. Edit .env -- set your domain and generate secrets
+#   3. docker compose up -d
+#   4. Open https://your-domain/admin/login
 
 services:
   atauth:
@@ -19,25 +15,11 @@ services:
     container_name: atauth-gateway
     restart: unless-stopped
     ports:
-      # Bind to localhost only by default for security
-      # Use a reverse proxy (Traefik/Caddy) for external access
+      # Bind to localhost only -- use a reverse proxy for external access
       - "127.0.0.1:3100:3100"
+    env_file: .env
     environment:
-      # Gateway configuration
-      - PORT=3100
-      - HOST=0.0.0.0
-
-      # OAuth client identity (your gateway's public URL)
-      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-https://auth.example.com/client-metadata.json}
-      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-https://auth.example.com/auth/callback}
-
-      # Admin API token (generate with: openssl rand -hex 32)
-      - ADMIN_TOKEN=${ADMIN_TOKEN}
-
-      # CORS origins (comma-separated)
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
-
-      # Database path
+      # Override DB_PATH for container volume mount
       - DB_PATH=/app/data/gateway.db
     volumes:
       - atauth-data:/app/data
@@ -48,7 +30,7 @@ services:
       retries: 3
       start_period: 10s
     labels:
-      # Traefik labels (optional - uncomment if using Traefik)
+      # Traefik labels (uncomment if using Traefik)
       # - "traefik.enable=true"
       # - "traefik.http.routers.atauth.rule=Host(`auth.example.com`)"
       # - "traefik.http.routers.atauth.entrypoints=websecure"
@@ -59,7 +41,6 @@ services:
       - "homepage.group=Authentication"
       - "homepage.name=ATAuth Gateway"
       - "homepage.icon=lock"
-      - "homepage.href=https://auth.example.com"
       - "homepage.description=AT Protocol SSO Gateway"
 
 volumes:
