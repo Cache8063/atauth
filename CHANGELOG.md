@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Passkey registration now requires discoverable credentials (`residentKey: 'required'`)
 - Rate limit increased from 10 to 30 requests per window
-- Test suite expanded to 827 tests across 45 test files (~56% statement coverage)
+- Test suite expanded to 394 tests across 22 test files (~56% statement coverage)
 - Request body size limited to 16kb (JSON and URL-encoded)
 
 ### Fixed
