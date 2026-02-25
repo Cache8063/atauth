@@ -1,5 +1,5 @@
 /**
- * ATAuth Gateway
+ * ATAuth Gateway - AT Protocol Authentication Service
  *
  * AT Protocol OAuth gateway for application authentication.
  * Issues HMAC-signed tokens for backend servers to verify user identity.
