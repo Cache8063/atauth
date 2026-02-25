@@ -5,7 +5,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import type { RegistrationResponseJSON, AuthenticationResponseJSON } from '@simplewebauthn/types';
+import type { RegistrationResponseJSON, AuthenticationResponseJSON } from '@simplewebauthn/server';
 import type { DatabaseService } from '../services/database.js';
 import type { PasskeyService } from '../services/passkey.js';
 import type { OIDCService } from '../services/oidc/index.js';

@@ -14,9 +14,11 @@ vi.mock('@simplewebauthn/server', () => ({
   verifyRegistrationResponse: vi.fn().mockResolvedValue({
     verified: true,
     registrationInfo: {
-      credentialID: 'cred-id-123',
-      credentialPublicKey: Buffer.from('public-key-bytes'),
-      counter: 0,
+      credential: {
+        id: 'cred-id-123',
+        publicKey: Buffer.from('public-key-bytes'),
+        counter: 0,
+      },
       credentialDeviceType: 'singleDevice',
       credentialBackedUp: false,
     },

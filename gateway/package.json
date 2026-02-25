@@ -32,8 +32,8 @@
   },
   "dependencies": {
     "@atproto/oauth-client-node": "^0.3.0",
-    "@simplewebauthn/server": "^10.0.1",
-    "better-sqlite3": "^11.6.0",
+    "@simplewebauthn/server": "^13.0.0",
+    "better-sqlite3": "^12.0.0",
     "cors": "^2.8.5",
     "express": "^5.0.0",
     "helmet": "^8.0.0",
@@ -61,6 +61,6 @@
     "vitest": "^4.0.18"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

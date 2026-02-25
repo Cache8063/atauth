@@ -18,7 +18,7 @@ import type {
   AuthenticatorTransportFuture,
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
-} from '@simplewebauthn/types';
+} from '@simplewebauthn/server';
 import type { DatabaseService } from './database.js';
 import type { PasskeyListItem } from '../types/passkey.js';
 
@@ -119,15 +119,15 @@ export class PasskeyService {
         return { success: false, error: 'Verification failed' };
       }
 
-      const { credentialID, credentialPublicKey, counter, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+      const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
 
       // Store the credential
       this.db.savePasskeyCredential({
-        id: credentialID,
+        id: credential.id,
         did,
         handle,
-        public_key: Buffer.from(credentialPublicKey).toString('base64'),
-        counter,
+        public_key: Buffer.from(credential.publicKey).toString('base64'),
+        counter: credential.counter,
         device_type: credentialDeviceType === 'singleDevice' ? 'platform' : 'cross-platform',
         backed_up: credentialBackedUp,
         transports: response.response.transports as string[] | undefined ?? null,
@@ -137,7 +137,7 @@ export class PasskeyService {
       // Clean up challenge
       pendingChallenges.delete(challengeKey);
 
-      return { success: true, credentialId: credentialID };
+      return { success: true, credentialId: credential.id };
     } catch (error) {
       console.error('[Passkey] Registration verification error:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Verification failed' };
@@ -209,9 +209,9 @@ export class PasskeyService {
         expectedChallenge: storedChallenge.challenge,
         expectedOrigin: this.origin,
         expectedRPID: this.rpID,
-        authenticator: {
-          credentialID: credential.id,
-          credentialPublicKey: Buffer.from(credential.public_key, 'base64'),
+        credential: {
+          id: credential.id,
+          publicKey: Buffer.from(credential.public_key, 'base64'),
           counter: credential.counter,
           transports: credential.transports as AuthenticatorTransportFuture[] | undefined,
         },
