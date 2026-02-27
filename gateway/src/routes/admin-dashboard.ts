@@ -1307,7 +1307,8 @@ function layout(title: string, content: string): string {
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f172a;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+      background-attachment: fixed;
       color: #e2e8f0;
       min-height: 100vh;
     }
@@ -1317,8 +1318,10 @@ function layout(title: string, content: string): string {
     }
     nav {
       width: 220px;
-      background: #1e293b;
-      border-right: 1px solid #334155;
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-right: 1px solid rgba(51, 65, 85, 0.6);
       padding: 1.5rem 0;
       flex-shrink: 0;
     }
@@ -1365,8 +1368,9 @@ function layout(title: string, content: string): string {
     .card {
       background: #1e293b;
       border: 1px solid #334155;
-      border-radius: 10px;
+      border-radius: 12px;
       padding: 1.25rem;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
     }
     .stats-grid {
       display: grid;
@@ -1376,9 +1380,15 @@ function layout(title: string, content: string): string {
     .stat-card {
       background: #1e293b;
       border: 1px solid #334155;
-      border-radius: 10px;
+      border-radius: 12px;
       padding: 1.25rem;
       text-align: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
     }
     .stat-value {
       font-size: 2rem;
@@ -1403,8 +1413,9 @@ function layout(title: string, content: string): string {
       border-collapse: collapse;
       background: #1e293b;
       border: 1px solid #334155;
-      border-radius: 10px;
+      border-radius: 12px;
       overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
     }
     th, td {
       padding: 0.625rem 0.875rem;
@@ -1499,6 +1510,7 @@ function layout(title: string, content: string): string {
       border-radius: 8px;
       margin-bottom: 1rem;
       font-size: 0.875rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
     .flash-success {
       background: #14532d;
@@ -1538,7 +1550,7 @@ function layout(title: string, content: string): string {
     .secret-box {
       background: #0f172a;
       border: 2px solid #f59e0b;
-      border-radius: 8px;
+      border-radius: 12px;
       padding: 1rem;
       font-family: monospace;
       font-size: 0.9rem;
@@ -1567,6 +1579,7 @@ function layout(title: string, content: string): string {
       color: #fbbf24;
       font-size: 0.875rem;
       margin: 0.75rem 0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
     .callout-info {
       background: #0c1a2e;
@@ -1577,6 +1590,7 @@ function layout(title: string, content: string): string {
       font-size: 0.875rem;
       margin: 0.75rem 0;
       white-space: pre-wrap;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
     .wizard-grid {
       display: grid;
@@ -1586,18 +1600,24 @@ function layout(title: string, content: string): string {
     .wizard-card {
       background: #1e293b;
       border: 1px solid #334155;
-      border-radius: 10px;
+      border-radius: 12px;
       padding: 1.25rem;
-      transition: border-color 0.15s;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      transition: border-color 0.15s, transform 0.15s ease, box-shadow 0.15s ease;
     }
-    .wizard-card:hover { border-color: #3b82f6; }
+    .wizard-card:hover {
+      border-color: #3b82f6;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
     .wizard-card h4 { color: #f1f5f9; margin-bottom: 0.25rem; }
     .wizard-card p { color: #94a3b8; font-size: 0.8rem; margin-bottom: 0.75rem; }
     .code-block {
       background: #0f172a;
       border: 1px solid #334155;
-      border-radius: 8px;
+      border-radius: 12px;
       padding: 1rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
       font-family: monospace;
       font-size: 0.8rem;
       color: #7dd3fc;
@@ -1647,7 +1667,14 @@ function layout(title: string, content: string): string {
     dd { margin-top: 0.15rem; }
     @media (max-width: 768px) {
       .shell { flex-direction: column; }
-      nav { width: 100%; border-right: none; border-bottom: 1px solid #334155; padding: 1rem 0; }
+      nav {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+        padding: 1rem 0;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
       nav a { display: inline-block; }
       main { padding: 1rem; }
     }

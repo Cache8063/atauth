@@ -24,6 +24,18 @@ ATAuth issues standard OIDC tokens back to your app
 
 Any app that supports OpenID Connect can use ATAuth. No custom integration needed.
 
+## Screenshots
+
+<!-- Add your own screenshots to docs/screenshots/ -->
+
+![Login - Sign in with your AT Protocol identity](docs/screenshots/login.png)
+
+![Admin Dashboard - Stats and quick actions](docs/screenshots/dashboard.png)
+
+![Setup Wizard - One-click setup for 20+ self-hosted apps](docs/screenshots/wizard.png)
+
+![Access Rules - Per-user control with DID and handle patterns](docs/screenshots/access-rules.png)
+
 ## Features
 
 - **Standard OIDC Provider**: Discovery, authorization, token, userinfo, revocation, JWKS endpoints
@@ -45,7 +57,7 @@ Any app that supports OpenID Connect can use ATAuth. No custom integration neede
 ### 1. Clone and configure
 
 ```bash
-git clone https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth.git
+git clone https://github.com/Cache8063/atauth.git
 cd atauth
 cp gateway/.env.example .env
 ```
