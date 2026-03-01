@@ -88,6 +88,7 @@ jobs:
         run: |
           docker build \
             --platform linux/amd64 \
+            --build-arg BUILD_COMMIT=${{ steps.sha.outputs.short }} \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }} \
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
             gateway/
