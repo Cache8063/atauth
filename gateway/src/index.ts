@@ -250,6 +250,17 @@ async function main(): Promise<void> {
     });
   });
 
+  // Version endpoint
+  const pkgPath = path.join(process.cwd(), 'package.json');
+  const pkgVersion = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+  app.get('/version', (_req, res) => {
+    res.json({
+      service: 'atauth-gateway',
+      version: pkgVersion,
+      commit: process.env.BUILD_COMMIT || 'unknown',
+    });
+  });
+
   // Forward-auth proxy routes MUST be mounted before the general /auth rate limiter.
   // /auth/verify is called by nginx auth_request on every subrequest from a single
   // pod IP, so per-IP rate limiting would block legitimate traffic.

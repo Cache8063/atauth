@@ -46,6 +46,10 @@ RUN mkdir -p /app/data && chown atauth:atauth /app/data
 # Switch to non-root user
 USER atauth
 
+# Build metadata
+ARG BUILD_COMMIT=unknown
+ENV BUILD_COMMIT=${BUILD_COMMIT}
+
 # Environment defaults
 ENV NODE_ENV=production \
     PORT=3100 \
