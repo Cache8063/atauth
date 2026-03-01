@@ -14,7 +14,7 @@
 | **Routing** | Cloudflare Tunnel → K8s service |
 | **Image** | `registry.digitalocean.com/ghostmesh-registry/atauth` |
 | **Data** | K8s PersistentVolume (SQLite) at `/app/data/gateway.db` |
-| **CI/CD** | Gitea Actions → DO registry → kubectl (currently broken as of 2026-02-25) |
+| **CI/CD** | Gitea Actions → DO registry → kubectl (working, last deploy 2026-03-01) |
 | **Kubectl** | `KUBECONFIG=~/.kube/atauth-kubeconfig.yaml kubectl --insecure-skip-tls-verify -n atauth` |
 | **Admin Token** | In K8s Secret `atauth-secrets` key `ATAUTH_ADMIN_TOKEN` |
 
@@ -100,10 +100,10 @@ See `docs/DO-HANDOFF.md` for full operations guide.
 
 ## Cleanup TODO
 
-- [ ] Fix Gitea CI pipeline (broken since 2026-02-25)
+- [x] Fix Gitea CI pipeline — was not actually broken, stale note (verified 2026-03-01)
 - [x] Remove stale `atauth.arcnode.xyz` Cloudflare tunnel route + DNS (done 2026-03-01)
 - [ ] Remove `/opt/atauth/` directory and Docker volumes from pds-hetzner
-- [ ] Add `/version` endpoint to atauth for quick identification
+- [x] Add `/version` endpoint to atauth for quick identification (done 2026-03-01, commit 28fd4cc)
 - [ ] Add uptime monitoring
 - [x] Consolidate to single K8s atauth instance (done 2026-03-01)
 - [x] Decommission PDS atauth sidecar (done 2026-03-01)
