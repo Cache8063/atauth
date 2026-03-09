@@ -452,6 +452,11 @@ export function createAuthorizeRouter(
         sanitizedHandle = sanitizedHandle + '.bsky.social';
       }
 
+      // Validate handle format
+      if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(sanitizedHandle)) {
+        return res.status(400).json({ error: 'invalid_handle', message: 'Invalid handle format' });
+      }
+
       // Get the pending authorization
       const authData = db.getAuthorizationCode(auth_code);
       if (!authData) {

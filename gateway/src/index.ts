@@ -206,6 +206,9 @@ async function main(): Promise<void> {
   // Create Express app
   const app = express();
 
+  // Trust the first proxy (k8s ingress / cloudflared) for correct client IP in rate limiting
+  app.set('trust proxy', 1);
+
   // Middleware
   // Generate a per-request nonce for inline scripts (CSP script-src)
   app.use((_req, res, next) => {
@@ -265,7 +268,7 @@ async function main(): Promise<void> {
   // /auth/verify is called by nginx auth_request on every subrequest from a single
   // pod IP, so per-IP rate limiting would block legitimate traffic.
   if (config.forwardAuth.enabled) {
-    const proxyRouter = createProxyAuthRoutes(db, oauth, { ...config.forwardAuth, sessionSecret: config.forwardAuth.sessionSecret! }, config.oidc.issuer);
+    const proxyRouter = createProxyAuthRoutes(db, oauth, { ...config.forwardAuth, sessionSecret: config.forwardAuth.sessionSecret! }, config.oidc.issuer, passkeyService);
     // Mount entire proxy router at /auth -- no rate limit on /auth/verify
     app.use('/auth', proxyRouter);
     console.log('Forward-auth proxy enabled');

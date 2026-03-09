@@ -87,18 +87,24 @@ export function createMFARouter(
   /**
    * POST /auth/mfa/totp/verify
    * Verify TOTP code during login
+   * Requires authentication -- DID comes from the authenticated session, not the request body
    */
   router.post('/totp/verify', async (req: Request, res: Response) => {
     try {
-      const { did, code, client_id, scope } = req.body as {
-        did: string;
+      const { did: authedDid } = await authenticateRequest(req, db, oidcService);
+      const { code, client_id, scope } = req.body as {
         code: string;
         client_id?: string;
         scope?: string;
       };
 
-      if (!did || !code) {
-        throw new HttpError(400, 'invalid_request', 'Missing did or code');
+      const did = authedDid;
+      if (!did) {
+        throw new HttpError(401, 'unauthorized', 'Authentication required');
+      }
+
+      if (!code) {
+        throw new HttpError(400, 'invalid_request', 'Missing code');
       }
 
       const success = mfaService.verifyTOTP(did, code);
@@ -217,18 +223,24 @@ export function createMFARouter(
   /**
    * POST /auth/mfa/backup-codes/verify
    * Verify a backup code during login
+   * Requires authentication -- DID comes from the authenticated session, not the request body
    */
   router.post('/backup-codes/verify', async (req: Request, res: Response) => {
     try {
-      const { did, code, client_id, scope } = req.body as {
-        did: string;
+      const { did: authedDid } = await authenticateRequest(req, db, oidcService);
+      const { code, client_id, scope } = req.body as {
         code: string;
         client_id?: string;
         scope?: string;
       };
 
-      if (!did || !code) {
-        throw new HttpError(400, 'invalid_request', 'Missing did or code');
+      const did = authedDid;
+      if (!did) {
+        throw new HttpError(401, 'unauthorized', 'Authentication required');
+      }
+
+      if (!code) {
+        throw new HttpError(400, 'invalid_request', 'Missing code');
       }
 
       const success = mfaService.verifyBackupCode(did, code);

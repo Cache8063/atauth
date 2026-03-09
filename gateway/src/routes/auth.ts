@@ -6,7 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { OAuthService } from '../services/oauth.js';
 import { DatabaseService } from '../services/database.js';
 import { createGatewayToken } from '../utils/hmac.js';
@@ -170,7 +170,7 @@ export function createAuthRoutes(
       app.token_ttl_seconds
     );
 
-    const sessionId = uuidv4();
+    const sessionId = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + app.token_ttl_seconds * 1000);
 
     db.createSession({
@@ -241,10 +241,15 @@ export function createAuthRoutes(
       throw httpError.notFound('app_not_found', 'Application not found');
     }
 
+    const parsedUserId = parseInt(user_id, 10);
+    if (!Number.isFinite(parsedUserId)) {
+      throw httpError.badRequest('invalid_user_id', 'user_id must be a valid integer');
+    }
+
     db.setUserMapping({
       did: session.did,
       app_id,
-      user_id: parseInt(user_id, 10),
+      user_id: parsedUserId,
       handle: session.handle,
     });
 
@@ -252,7 +257,7 @@ export function createAuthRoutes(
       {
         did: session.did,
         handle: session.handle,
-        user_id: parseInt(user_id, 10),
+        user_id: parsedUserId,
         app_id,
       },
       app.hmac_secret,
@@ -264,7 +269,7 @@ export function createAuthRoutes(
       token,
       did: session.did,
       handle: session.handle,
-      user_id: parseInt(user_id, 10),
+      user_id: parsedUserId,
     });
   });
 
