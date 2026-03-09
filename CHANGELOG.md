@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-03-09
+
+### Added
+
+- Passkey login support for forward-auth proxy flow (previously only available in OIDC flow)
+- New endpoint `POST /auth/proxy/passkey` for WebAuthn authentication in proxy-auth
+- Passkey button and WebAuthn JavaScript on proxy login page (feature-detected)
+- GitHub Actions CI workflow for the FOSS repository
+
+### Security
+
+- MFA verify endpoints (`/auth/mfa/totp/verify`, `/auth/mfa/backup-codes/verify`) now require authentication; DID comes from session, not request body
+- Session expiry enforced at the database query level (`getSession()` checks `expires_at`)
+- OIDC logout redirect validation uses origin comparison instead of prefix matching (prevents open redirect)
+- PKCE `plain` method rejected; only `S256` accepted with constant-time comparison
+- Empty DID guard in OIDC token endpoint prevents minting tokens for unauthenticated authorization codes
+- Handle format validation in OIDC authorize endpoint
+- `trust proxy` configured for correct client IP behind reverse proxies
+- `user_id` NaN validation in auth link endpoint
+
+### Changed
+
+- Removed `uuid` package dependency (replaced with `crypto.randomUUID()`)
+- Test suite expanded to 404 tests
+
 ## [2.2.0] - 2026-02-24
 
 ### Added
@@ -208,12 +233,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Input validation and sanitization
 - Rate limiting on all endpoints
 
-[2.2.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v2.1.0...v2.2.0
-[2.1.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v2.0.3...v2.1.0
-[2.0.3]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v2.0.2...v2.0.3
-[2.0.2]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v2.0.1...v2.0.2
-[2.0.1]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v2.0.0...v2.0.1
-[2.0.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v1.3.0...v2.0.0
-[1.3.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v1.2.0...v1.3.0
-[1.2.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/compare/v1.0.0...v1.2.0
-[1.0.0]: https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth/releases/tag/v1.0.0
+[2.3.0]: https://github.com/Cache8063/atauth/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/Cache8063/atauth/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/Cache8063/atauth/compare/v2.0.3...v2.1.0
+[2.0.3]: https://github.com/Cache8063/atauth/compare/v2.0.2...v2.0.3
+[2.0.2]: https://github.com/Cache8063/atauth/compare/v2.0.1...v2.0.2
+[2.0.1]: https://github.com/Cache8063/atauth/compare/v2.0.0...v2.0.1
+[2.0.0]: https://github.com/Cache8063/atauth/compare/v1.3.0...v2.0.0
+[1.3.0]: https://github.com/Cache8063/atauth/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/Cache8063/atauth/compare/v1.0.0...v1.2.0
+[1.0.0]: https://github.com/Cache8063/atauth/releases/tag/v1.0.0
