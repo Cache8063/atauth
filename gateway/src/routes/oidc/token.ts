@@ -223,6 +223,15 @@ async function handleAuthorizationCodeGrant(
     }
   }
 
+  // Ensure the auth code has been populated with a user identity
+  if (!authCode.did) {
+    res.status(400).json({
+      error: 'invalid_grant',
+      error_description: 'Authorization code has not been authenticated',
+    });
+    return;
+  }
+
   // Mark code as used
   db.markAuthorizationCodeUsed(code);
 

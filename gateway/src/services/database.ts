@@ -415,7 +415,7 @@ export class DatabaseService {
   }
 
   getSession(sessionId: string): AppSession | null {
-    const stmt = this.db.prepare('SELECT * FROM sessions WHERE id = ?');
+    const stmt = this.db.prepare('SELECT * FROM sessions WHERE id = ? AND expires_at > datetime(\'now\')');
     const row = stmt.get(sessionId) as (Omit<AppSession, 'created_at' | 'expires_at'> & {
       created_at: string;
       expires_at: string;

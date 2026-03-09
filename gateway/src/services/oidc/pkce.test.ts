@@ -65,11 +65,11 @@ describe('PKCE', () => {
       expect(verifyCodeChallenge(wrongVerifier, challenge, 'S256')).toBe(false);
     });
 
-    it('should verify plain challenge correctly', () => {
+    it('should reject plain method as insecure', () => {
       const verifier = generateCodeVerifier();
       const challenge = generateCodeChallenge(verifier, 'plain');
 
-      expect(verifyCodeChallenge(verifier, challenge, 'plain')).toBe(true);
+      expect(verifyCodeChallenge(verifier, challenge, 'plain')).toBe(false);
     });
 
     it('should reject invalid plain verifier', () => {
@@ -123,7 +123,10 @@ describe('PKCE', () => {
   describe('isValidCodeChallengeMethod', () => {
     it('should accept valid methods', () => {
       expect(isValidCodeChallengeMethod('S256')).toBe(true);
-      expect(isValidCodeChallengeMethod('plain')).toBe(true);
+    });
+
+    it('should reject plain method', () => {
+      expect(isValidCodeChallengeMethod('plain')).toBe(false);
     });
 
     it('should reject invalid methods', () => {

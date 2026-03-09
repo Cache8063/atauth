@@ -26,7 +26,7 @@ const forwardAuthConfig: ForwardAuthConfig = {
   proxyCookieTtl: 86400,
 };
 
-function createTestApp(db: DatabaseService) {
+function createTestApp(db: DatabaseService, mockPasskey?: any) {
   const app = express();
   app.use((_req, res, next) => {
     res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
@@ -41,7 +41,7 @@ function createTestApp(db: DatabaseService) {
     handleCallback: vi.fn(),
   } as any;
 
-  const router = createProxyAuthRoutes(db, mockOAuth, forwardAuthConfig, TEST_ISSUER);
+  const router = createProxyAuthRoutes(db, mockOAuth, forwardAuthConfig, TEST_ISSUER, mockPasskey || null);
   app.use('/auth', router);
   return { app, mockOAuth };
 }
@@ -599,5 +599,248 @@ describe('GET /auth/proxy/callback', () => {
 
     expect(res.status).toBe(500);
     expect(res.text).toContain('unexpected error');
+  });
+});
+
+const mockCredential = {
+  id: 'credential-id-123',
+  rawId: 'credential-id-123',
+  response: {
+    clientDataJSON: 'mock-client-data',
+    authenticatorData: 'mock-auth-data',
+    signature: 'mock-signature',
+  },
+  type: 'public-key',
+};
+
+describe('POST /auth/proxy/passkey', () => {
+  let db: DatabaseService;
+  let app: express.Application;
+  let mockPasskey: { verifyAuthentication: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    db = new DatabaseService(':memory:');
+    mockPasskey = {
+      verifyAuthentication: vi.fn(),
+    };
+    ({ app } = createTestApp(db, mockPasskey));
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('should complete proxy flow via passkey authentication', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
+    db.saveProxyAuthRequest({
+      id: 'passkey-req-1',
+      redirect_uri: 'https://search.example.com/path',
+      created_at: now,
+      expires_at: now + 600,
+    });
+
+    mockPasskey.verifyAuthentication.mockResolvedValue({
+      success: true,
+      did: 'did:plc:test123',
+      handle: 'user.bsky.social',
+    });
+
+    const res = await request(app)
+      .post('/auth/proxy/passkey')
+      .send({
+        auth_request_id: 'passkey-req-1',
+        credential: mockCredential,
+        challenge: 'test-challenge',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.redirect_url).toContain('search.example.com');
+    expect(res.body.redirect_url).toContain('_atauth_ticket=');
+
+    // Session cookie should be set
+    expect(res.headers['set-cookie']).toBeDefined();
+    expect(res.headers['set-cookie'][0]).toContain(SESSION_COOKIE_NAME);
+
+    // Auth request should be cleaned up
+    expect(db.getProxyAuthRequest('passkey-req-1')).toBeNull();
+
+    // Proxy session should exist
+    const sessions = db.getAllProxySessions('did:plc:test123');
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].handle).toBe('user.bsky.social');
+  });
+
+  it('should return 400 for missing parameters', async () => {
+    const res = await request(app)
+      .post('/auth/proxy/passkey')
+      .send({ auth_request_id: 'test' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_request');
+  });
+
+  it('should return 400 for invalid auth request', async () => {
+    const res = await request(app)
+      .post('/auth/proxy/passkey')
+      .send({
+        auth_request_id: 'nonexistent',
+        credential: mockCredential,
+        challenge: 'test-challenge',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_request');
+    expect(res.body.error_description).toContain('expired or invalid');
+  });
+
+  it('should return 400 for expired auth request', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    db.saveProxyAuthRequest({
+      id: 'expired-passkey-req',
+      redirect_uri: 'https://search.example.com/',
+      created_at: now - 700,
+      expires_at: now - 100,
+    });
+
+    const res = await request(app)
+      .post('/auth/proxy/passkey')
+      .send({
+        auth_request_id: 'expired-passkey-req',
+        credential: mockCredential,
+        challenge: 'test-challenge',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error_description).toContain('expired');
+  });
+
+  it('should return 401 for failed passkey verification', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    db.saveProxyAuthRequest({
+      id: 'fail-passkey-req',
+      redirect_uri: 'https://search.example.com/',
+      created_at: now,
+      expires_at: now + 600,
+    });
+
+    mockPasskey.verifyAuthentication.mockResolvedValue({
+      success: false,
+      error: 'Unknown credential',
+    });
+
+    const res = await request(app)
+      .post('/auth/proxy/passkey')
+      .send({
+        auth_request_id: 'fail-passkey-req',
+        credential: mockCredential,
+        challenge: 'bad-challenge',
+      });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('authentication_failed');
+    expect(res.body.error_description).toContain('Unknown credential');
+  });
+
+  it('should return 403 when access rules deny the user', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
+    db.saveProxyAuthRequest({
+      id: 'denied-passkey-req',
+      redirect_uri: 'https://search.example.com/',
+      created_at: now,
+      expires_at: now + 600,
+    });
+
+    // Only allow *.example.com handles
+    db.createProxyAccessRule({
+      origin_id: null,
+      rule_type: 'allow',
+      subject_type: 'handle_pattern',
+      subject_value: '*.example.com',
+      description: null,
+    });
+
+    mockPasskey.verifyAuthentication.mockResolvedValue({
+      success: true,
+      did: 'did:plc:outsider',
+      handle: 'outsider.bsky.social',
+    });
+
+    const res = await request(app)
+      .post('/auth/proxy/passkey')
+      .send({
+        auth_request_id: 'denied-passkey-req',
+        credential: mockCredential,
+        challenge: 'test-challenge',
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('access_denied');
+  });
+
+  it('should return 404 when passkey service is not enabled', async () => {
+    const { app: appNoPasskey } = createTestApp(db);
+    const now = Math.floor(Date.now() / 1000);
+    db.saveProxyAuthRequest({
+      id: 'no-passkey-req',
+      redirect_uri: 'https://search.example.com/',
+      created_at: now,
+      expires_at: now + 600,
+    });
+
+    const res = await request(appNoPasskey)
+      .post('/auth/proxy/passkey')
+      .send({
+        auth_request_id: 'no-passkey-req',
+        credential: mockCredential,
+        challenge: 'test-challenge',
+      });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('not_found');
+  });
+});
+
+describe('Proxy login page passkey rendering', () => {
+  let db: DatabaseService;
+
+  beforeEach(() => {
+    db = new DatabaseService(':memory:');
+    db.addProxyAllowedOrigin('https://search.example.com', 'SearXNG');
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('should render passkey button when passkey service is enabled', async () => {
+    const mockPasskey = { verifyAuthentication: vi.fn() };
+    const { app } = createTestApp(db, mockPasskey);
+
+    const res = await request(app)
+      .get('/auth/proxy/login')
+      .query({ rd: 'https://search.example.com/page' });
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('passkeyBtn');
+    expect(res.text).toContain('Sign in with passkey');
+    expect(res.text).toContain('b64urlToBuffer');
+    expect(res.text).toContain('/auth/proxy/passkey');
+  });
+
+  it('should not render passkey button when passkey service is disabled', async () => {
+    const { app } = createTestApp(db);
+
+    const res = await request(app)
+      .get('/auth/proxy/login')
+      .query({ rd: 'https://search.example.com/page' });
+
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('passkeyBtn');
+    expect(res.text).not.toContain('Sign in with passkey');
+    // Handle form should still be present
+    expect(res.text).toContain('loginForm');
+    expect(res.text).toContain('you.bsky.social');
   });
 });

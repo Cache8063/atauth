@@ -18,6 +18,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import type { DatabaseService } from '../services/database.js';
 import type { OAuthService } from '../services/oauth.js';
+import type { PasskeyService } from '../services/passkey.js';
 import type { ForwardAuthConfig, AccessCheckResult } from '../types/proxy.js';
 import { checkAccess } from '../utils/access-check.js';
 import {
@@ -39,6 +40,7 @@ export function createProxyAuthRoutes(
   oauthService: OAuthService,
   forwardAuthConfig: ForwardAuthConfig,
   oidcIssuer: string,
+  passkeyService: PasskeyService | null = null,
 ): Router {
   const router = Router();
   const secret = forwardAuthConfig.sessionSecret;
@@ -188,7 +190,7 @@ export function createProxyAuthRoutes(
       expires_at: now + 600, // 10 minutes
     });
 
-    res.type('html').send(renderProxyLoginPage(authRequestId, res.locals.cspNonce));
+    res.type('html').send(renderProxyLoginPage(authRequestId, res.locals.cspNonce, undefined, !!passkeyService));
   });
 
   // ===== POST /auth/proxy/login =====
@@ -281,8 +283,114 @@ export function createProxyAuthRoutes(
       if (isJsonRequest) {
         res.status(400).json({ error: userMessage });
       } else {
-        res.status(400).type('html').send(renderProxyLoginPage(auth_request_id, res.locals.cspNonce, userMessage));
+        res.status(400).type('html').send(renderProxyLoginPage(auth_request_id, res.locals.cspNonce, userMessage, !!passkeyService));
       }
+    }
+  });
+
+  // ===== POST /auth/proxy/passkey =====
+  // Authenticate via passkey for the forward-auth flow.
+  router.post('/proxy/passkey', async (req: Request, res: Response) => {
+    try {
+      if (!passkeyService) {
+        return res.status(404).json({
+          error: 'not_found',
+          error_description: 'Passkey authentication is not enabled',
+        });
+      }
+
+      const { auth_request_id, credential, challenge } = req.body;
+
+      if (!auth_request_id || !credential || !challenge) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing required parameters: auth_request_id, credential, challenge',
+        });
+      }
+
+      // Validate the pending auth request
+      const authRequest = db.getProxyAuthRequest(auth_request_id);
+      if (!authRequest) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Login request expired or invalid',
+        });
+      }
+
+      if (authRequest.expires_at < Math.floor(Date.now() / 1000)) {
+        db.deleteProxyAuthRequest(auth_request_id);
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Login request expired',
+        });
+      }
+
+      // Verify the passkey
+      const result = await passkeyService.verifyAuthentication(credential, challenge);
+
+      if (!result.success || !result.did || !result.handle) {
+        return res.status(401).json({
+          error: 'authentication_failed',
+          error_description: result.error || 'Passkey authentication failed',
+        });
+      }
+
+      console.log(`[Proxy Passkey] Authenticated user: ${result.handle} (${result.did})`);
+
+      // Check access rules before creating session
+      const accessResult = enforceAccess(result.did, result.handle, authRequest.redirect_uri);
+      if (!accessResult.allowed) {
+        db.deleteProxyAuthRequest(auth_request_id);
+        return res.status(403).json({
+          error: 'access_denied',
+          error_description: 'You do not have access to this service',
+        });
+      }
+
+      // Create a proxy session
+      const now = Math.floor(Date.now() / 1000);
+      const sessionId = crypto.randomBytes(32).toString('base64url');
+      db.createProxySession({
+        id: sessionId,
+        did: result.did,
+        handle: result.handle,
+        created_at: now,
+        expires_at: now + forwardAuthConfig.sessionTtl,
+        last_activity: now,
+        user_agent: req.headers['user-agent'],
+        ip_address: req.headers['x-forwarded-for'] as string || req.ip,
+      });
+
+      // Set the ATAuth session cookie
+      const sessionCookieValue = createSessionCookie(sessionId, secret, forwardAuthConfig.sessionTtl);
+      res.setHeader('Set-Cookie',
+        `${SESSION_COOKIE_NAME}=${sessionCookieValue}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${forwardAuthConfig.sessionTtl}`,
+      );
+
+      // Generate auth ticket for the redirect target
+      const targetOrigin = extractOrigin(authRequest.redirect_uri);
+      if (!targetOrigin) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Invalid redirect URI',
+        });
+      }
+
+      const ticket = createAuthTicket(sessionId, result.did, result.handle, targetOrigin, secret);
+
+      // Clean up
+      db.deleteProxyAuthRequest(auth_request_id);
+
+      // Redirect back to the original URL with ticket
+      const redirectUrl = new URL(authRequest.redirect_uri);
+      redirectUrl.searchParams.set('_atauth_ticket', ticket);
+      res.json({ redirect_url: redirectUrl.toString() });
+    } catch (error) {
+      console.error('[Proxy Passkey] Error:', error);
+      res.status(500).json({
+        error: 'server_error',
+        error_description: 'Internal server error',
+      });
     }
   });
 
@@ -443,7 +551,7 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function renderProxyLoginPage(authRequestId: string, nonce?: string, errorMessage?: string): string {
+function renderProxyLoginPage(authRequestId: string, nonce?: string, errorMessage?: string, passkeyEnabled = false): string {
   const errorHtml = errorMessage
     ? `<div class="error" style="display:block">${escapeHtml(errorMessage)}</div>`
     : '<div class="error" id="error"></div>';
@@ -468,7 +576,12 @@ function renderProxyLoginPage(authRequestId: string, nonce?: string, errorMessag
       <input type="text" id="handle" name="handle" placeholder="you.bsky.social" autocomplete="username" autocapitalize="none" spellcheck="false" required>
       <p class="hint">Enter your Bluesky handle or custom domain</p>
       <button type="submit" id="submitBtn">Continue</button>
-    </form>
+    </form>${passkeyEnabled ? `
+    <div class="divider"><span>or</span></div>
+    <button type="button" class="passkey-btn" id="passkeyBtn" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7a4 4 0 1 0-4 4"/><path d="M11 11l-1.5 1.5"/><path d="M9.5 12.5L6 16H4v2h2v-2h2v-2l1.5-1.5"/></svg>
+      Sign in with passkey
+    </button>` : ''}
     <p class="privacy">Bluesky will ask to authorize broad access -- this is a limitation of the AT&nbsp;Protocol OAuth standard. This gateway only reads your identity (handle). It will never post, follow, or access your data.</p>
   </div>
   <script${nonce ? ` nonce="${nonce}"` : ''}>
@@ -482,7 +595,97 @@ function renderProxyLoginPage(authRequestId: string, nonce?: string, errorMessag
       submitBtn.disabled = true;
       submitBtn.textContent = 'Redirecting...';
       if (errorDiv) errorDiv.style.display = 'none';
-    });
+    });${passkeyEnabled ? `
+    function b64urlToBuffer(s) {
+      var b = s.replace(/-/g, '+').replace(/_/g, '/');
+      var pad = b.length % 4 === 0 ? '' : '='.repeat(4 - (b.length % 4));
+      var bin = atob(b + pad);
+      var arr = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr.buffer;
+    }
+    function bufferToB64url(buf) {
+      var bytes = new Uint8Array(buf);
+      var bin = '';
+      for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+    }
+    function showError(msg) {
+      var e = document.getElementById('error');
+      if (e) { e.textContent = msg; e.style.display = 'block'; }
+    }
+    var passkeyBtn = document.getElementById('passkeyBtn');
+    if (passkeyBtn && window.PublicKeyCredential) {
+      passkeyBtn.style.display = 'flex';
+      passkeyBtn.addEventListener('click', function() {
+        passkeyBtn.disabled = true;
+        passkeyBtn.textContent = 'Authenticating...';
+        if (errorDiv) errorDiv.style.display = 'none';
+        fetch('/auth/passkey/authenticate/options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var opts = data.options || data;
+          var pubKeyOpts = {
+            challenge: b64urlToBuffer(opts.challenge),
+            timeout: opts.timeout,
+            rpId: opts.rpId,
+            userVerification: opts.userVerification
+          };
+          if (opts.allowCredentials && opts.allowCredentials.length > 0) {
+            pubKeyOpts.allowCredentials = opts.allowCredentials.map(function(c) {
+              return { id: b64urlToBuffer(c.id), type: c.type, transports: c.transports };
+            });
+          }
+          return navigator.credentials.get({ publicKey: pubKeyOpts }).then(function(cred) {
+            return { cred: cred, challenge: opts.challenge };
+          });
+        })
+        .then(function(res) {
+          var cred = res.cred;
+          return fetch('/auth/proxy/passkey', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              auth_request_id: document.querySelector('input[name="auth_request_id"]').value,
+              challenge: res.challenge,
+              credential: {
+                id: cred.id,
+                rawId: bufferToB64url(cred.rawId),
+                response: {
+                  clientDataJSON: bufferToB64url(cred.response.clientDataJSON),
+                  authenticatorData: bufferToB64url(cred.response.authenticatorData),
+                  signature: bufferToB64url(cred.response.signature),
+                  userHandle: cred.response.userHandle ? bufferToB64url(cred.response.userHandle) : undefined
+                },
+                type: cred.type,
+                authenticatorAttachment: cred.authenticatorAttachment
+              }
+            })
+          });
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+          if (result.redirect_url) {
+            window.location.href = result.redirect_url;
+          } else {
+            showError(result.error_description || 'Passkey authentication failed');
+            passkeyBtn.disabled = false;
+            passkeyBtn.textContent = 'Sign in with passkey';
+          }
+        })
+        .catch(function(err) {
+          if (err.name !== 'NotAllowedError') {
+            showError('Passkey authentication failed. Try signing in with your handle.');
+          }
+          passkeyBtn.disabled = false;
+          passkeyBtn.textContent = 'Sign in with passkey';
+        });
+      });
+    }` : ''}
   </script>
 </body>
 </html>`;
@@ -644,6 +847,29 @@ function sharedStyles(): string {
       font-size: 14px;
       display: none;
     }
+    .divider { display: flex; align-items: center; margin: 24px 0; gap: 12px; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #334155; }
+    .divider span { color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+    .passkey-btn {
+      width: 100%;
+      padding: 14px;
+      background: transparent;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s, transform 0.15s, box-shadow 0.15s, background 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 0;
+    }
+    .passkey-btn:hover { border-color: #3b82f6; background: rgba(59, 130, 246, 0.06); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1); }
+    .passkey-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+    .passkey-btn svg { width: 18px; height: 18px; }
     .privacy { font-size: 12px; color: #64748b; margin-top: 24px; line-height: 1.6; text-align: center; }
     .privacy strong { color: #94a3b8; }
   </style>`;

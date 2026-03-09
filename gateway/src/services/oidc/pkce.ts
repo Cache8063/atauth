@@ -14,15 +14,20 @@ export function verifyCodeChallenge(
   codeChallenge: string,
   method: 'S256' | 'plain' = 'S256'
 ): boolean {
+  // Reject plain method -- only S256 is secure
   if (method === 'plain') {
-    return codeVerifier === codeChallenge;
+    return false;
   }
 
   // S256: SHA256(code_verifier) base64url encoded
   const hash = crypto.createHash('sha256').update(codeVerifier).digest();
   const computed = hash.toString('base64url');
 
-  return computed === codeChallenge;
+  // Constant-time comparison to prevent timing attacks
+  const a = Buffer.from(computed);
+  const b = Buffer.from(codeChallenge);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 /**
@@ -59,6 +64,6 @@ export function isValidCodeVerifier(codeVerifier: string): boolean {
 /**
  * Validate code challenge method
  */
-export function isValidCodeChallengeMethod(method: string): method is 'S256' | 'plain' {
-  return method === 'S256' || method === 'plain';
+export function isValidCodeChallengeMethod(method: string): method is 'S256' {
+  return method === 'S256';
 }

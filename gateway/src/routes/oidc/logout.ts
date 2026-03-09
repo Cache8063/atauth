@@ -54,9 +54,15 @@ export function createLogoutRouter(db: DatabaseService, oidcService: OIDCService
           });
         }
 
-        // Check if redirect URI is registered
-        // For logout, we could have a separate list, but for simplicity use redirect_uris
-        if (!client.redirect_uris.some((uri) => post_logout_redirect_uri.startsWith(uri.split('?')[0]))) {
+        // Check if redirect URI origin matches a registered redirect_uri origin
+        let redirectAllowed = false;
+        try {
+          const redirectOrigin = new URL(post_logout_redirect_uri).origin;
+          redirectAllowed = client.redirect_uris.some((uri) => {
+            try { return new URL(uri).origin === redirectOrigin; } catch { return false; }
+          });
+        } catch { /* invalid URL */ }
+        if (!redirectAllowed) {
           return res.status(400).json({
             error: 'invalid_request',
             error_description: 'Invalid post_logout_redirect_uri',
