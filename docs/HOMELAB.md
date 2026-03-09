@@ -12,7 +12,7 @@ ATAuth provides OIDC-based authentication for your homelab using AT Protocol ide
 ## Deploy
 
 ```bash
-git clone https://gitea.cloudforest-basilisk.ts.net/Arcnode.xyz/atauth.git
+git clone https://github.com/Cache8063/atauth.git
 cd atauth
 cp gateway/.env.example .env
 ```
