@@ -170,6 +170,26 @@ export class OAuthService {
     return { did, handle };
   }
 
+  /**
+   * Restore a PDS session for a user and make an authenticated xRPC call.
+   * Returns the response from the user's PDS.
+   */
+  async proxyPdsRequest(did: string, pathname: string, init?: RequestInit): Promise<Response> {
+    if (!this.client) {
+      throw new Error('OAuth client not initialized');
+    }
+
+    const session = await this.client.restore(did);
+    return session.fetchHandler(pathname, init);
+  }
+
+  /**
+   * Check if a PDS session exists for a DID.
+   */
+  hasPdsSession(did: string): boolean {
+    return sessionStore.has(did);
+  }
+
   private async resolveDidToHandle(did: string): Promise<string | null> {
     try {
       const response = await fetch(

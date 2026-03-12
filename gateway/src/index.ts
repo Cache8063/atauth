@@ -29,6 +29,7 @@ import { createMFARouter } from './routes/mfa.js';
 import { createEmailRouter } from './routes/email.js';
 import { createProxyAuthRoutes } from './routes/proxy-auth.js';
 import { createUserProfileRoutes } from './routes/user-profile.js';
+import { createPdsProxyRoutes } from './routes/pds-proxy.js';
 import { authRateLimit, apiRateLimit, adminRateLimit } from './middleware/rateLimit.js';
 import { HttpError } from './utils/errors.js';
 import type { WebhookConfig } from './utils/webhook.js';
@@ -296,6 +297,10 @@ async function main(): Promise<void> {
     app.use('/.well-known', wellKnownRouter);
     app.use('/oauth', authRateLimit, oauthRouter);
     console.log('OIDC routes enabled');
+
+    // PDS write proxy (requires OIDC for token validation)
+    app.use('/api/pds', apiRateLimit, createPdsProxyRoutes(oauth, oidcService));
+    console.log('PDS proxy routes enabled');
   }
 
   // Passkey routes (if enabled)
