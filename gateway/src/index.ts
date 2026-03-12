@@ -31,6 +31,7 @@ import { createProxyAuthRoutes } from './routes/proxy-auth.js';
 import { createUserProfileRoutes } from './routes/user-profile.js';
 import { authRateLimit, apiRateLimit, adminRateLimit } from './middleware/rateLimit.js';
 import { HttpError } from './utils/errors.js';
+import type { WebhookConfig } from './utils/webhook.js';
 
 // Configuration from environment
 const config = {
@@ -90,6 +91,15 @@ const config = {
     apiKey: process.env.EMAIL_API_KEY,
     codeExpiry: parseInt(process.env.EMAIL_CODE_EXPIRY || '900', 10), // 15 minutes
   },
+
+  // Webhook / login notification configuration
+  webhook: {
+    enabled: process.env.WEBHOOK_ENABLED === 'true',
+    matrixHomeserverUrl: process.env.WEBHOOK_MATRIX_HOMESERVER_URL || '',
+    matrixAccessToken: process.env.WEBHOOK_MATRIX_ACCESS_TOKEN || '',
+    matrixRoomId: process.env.WEBHOOK_MATRIX_ROOM_ID || '',
+    loginNotifyClients: (process.env.WEBHOOK_LOGIN_NOTIFY_CLIENTS || '').split(',').filter(Boolean),
+  } satisfies WebhookConfig,
 
   // Forward-auth proxy configuration
   forwardAuth: {
@@ -282,7 +292,7 @@ async function main(): Promise<void> {
 
   // OIDC routes (if enabled)
   if (oidcService) {
-    const { wellKnownRouter, oauthRouter } = createOIDCRouter(db, oidcService, oauth, passkeyService);
+    const { wellKnownRouter, oauthRouter } = createOIDCRouter(db, oidcService, oauth, passkeyService, config.webhook);
     app.use('/.well-known', wellKnownRouter);
     app.use('/oauth', authRateLimit, oauthRouter);
     console.log('OIDC routes enabled');

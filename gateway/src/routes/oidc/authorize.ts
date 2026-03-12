@@ -13,12 +13,14 @@ import type { PasskeyService } from '../../services/passkey.js';
 import { parseScopes, hasOpenIdScope, validateScopes } from '../../services/oidc/claims.js';
 import { isValidCodeChallengeMethod } from '../../services/oidc/pkce.js';
 import { checkAccess } from '../../utils/access-check.js';
+import { notifyLogin, type WebhookConfig } from '../../utils/webhook.js';
 
 export function createAuthorizeRouter(
   db: DatabaseService,
   oidcService: OIDCService,
   oauthService: OAuthService,
-  passkeyService?: PasskeyService | null
+  passkeyService?: PasskeyService | null,
+  webhookConfig?: WebhookConfig
 ): Router {
   const router = Router();
 
@@ -606,6 +608,16 @@ export function createAuthorizeRouter(
       // Update the authorization code with the user's identity
       db.updateAuthorizationCodeUser(auth_code, result.did, result.handle);
 
+      // Send login notification (fire-and-forget)
+      if (webhookConfig?.enabled && webhookConfig.loginNotifyClients.includes(authData.client_id)) {
+        notifyLogin(webhookConfig, {
+          client_id: authData.client_id,
+          client_name: oidcClient?.name || authData.client_id,
+          did: result.did,
+          handle: result.handle,
+        }).catch(err => console.error('[Webhook] notification failed:', err.message));
+      }
+
       // Build the redirect URL back to the original client
       const clientRedirectUrl = new URL(authData.redirect_uri);
       clientRedirectUrl.searchParams.set('code', auth_code);
@@ -734,6 +746,16 @@ export function createAuthorizeRouter(
             return res.status(403).type('html').send(renderAccessDeniedPage(oidcClient.name || authData.client_id, res.locals.cspNonce));
           }
         }
+      }
+
+      // Send login notification (fire-and-forget)
+      if (webhookConfig?.enabled && webhookConfig.loginNotifyClients.includes(authData.client_id)) {
+        notifyLogin(webhookConfig, {
+          client_id: authData.client_id,
+          client_name: oidcClient?.name || authData.client_id,
+          did,
+          handle,
+        }).catch(err => console.error('[Webhook] notification failed:', err.message));
       }
 
       // Build the redirect URL back to the original client
