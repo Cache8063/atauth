@@ -1,8 +1,8 @@
 /**
- * Forward-Auth Proxy Access Control
+ * Forward-Auth Proxy & Client Access Control
  *
  * Evaluates access rules to determine if a user (identified by DID and handle)
- * is allowed to access a protected service.
+ * is allowed to access a protected service or client application.
  *
  * Evaluation order:
  * 1. Deny rules (per-origin + global) - if any match, reject
@@ -11,7 +11,16 @@
  * 4. Default deny
  */
 
-import type { ProxyAccessRule, AccessCheckResult } from '../types/proxy.js';
+import type { AccessCheckResult } from '../types/proxy.js';
+
+/** Minimal rule shape required for access checking */
+interface AccessRule {
+  id: number;
+  rule_type: 'allow' | 'deny';
+  subject_type: 'did' | 'handle_pattern';
+  subject_value: string;
+  description: string | null;
+}
 
 /**
  * Match a handle against a pattern.
@@ -31,7 +40,7 @@ export function matchHandlePattern(pattern: string, handle: string): boolean {
 /**
  * Check if a DID or handle matches a given access rule.
  */
-function matchesRule(rule: ProxyAccessRule, did: string, handle: string): boolean {
+function matchesRule(rule: AccessRule, did: string, handle: string): boolean {
   if (rule.subject_type === 'did') {
     return rule.subject_value === did;
   }
@@ -39,15 +48,15 @@ function matchesRule(rule: ProxyAccessRule, did: string, handle: string): boolea
 }
 
 /**
- * Evaluate access rules for a user attempting to access a protected origin.
+ * Evaluate access rules for a user attempting to access a protected origin or client.
  */
 export function checkAccess(
   did: string,
   handle: string,
   rules: {
-    denyRules: ProxyAccessRule[];
-    originAllowRules: ProxyAccessRule[];
-    globalAllowRules: ProxyAccessRule[];
+    denyRules: AccessRule[];
+    originAllowRules: AccessRule[];
+    globalAllowRules: AccessRule[];
   },
 ): AccessCheckResult {
   // 1. Check deny rules (both per-origin and global)

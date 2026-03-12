@@ -849,6 +849,152 @@ export function createAdminRoutes(
     res.json(result);
   });
 
+  // ===== Client Access Rules =====
+
+  /**
+   * GET /admin/clients/:clientId/access
+   * List access rules for a client.
+   */
+  router.get('/clients/:clientId/access', requireAdmin, async (req: Request, res: Response) => {
+    const clientId = String(req.params.clientId);
+    const client = db.getOIDCClient(clientId);
+    if (!client) {
+      throw httpError.notFound('client_not_found', `Client '${clientId}' not found`);
+    }
+    const rules = db.listClientAccessRules(clientId);
+    res.json({ rules, require_access_check: client.require_access_check });
+  });
+
+  /**
+   * POST /admin/clients/:clientId/access
+   * Create an access rule for a client.
+   *
+   * Body:
+   * - rule_type: "allow" | "deny"
+   * - subject_type: "did" | "handle_pattern"
+   * - subject_value: string (DID or pattern like "*.example.com")
+   * - description: string (optional label)
+   */
+  router.post('/clients/:clientId/access', requireAdmin, async (req: Request, res: Response) => {
+    const clientId = String(req.params.clientId);
+    const client = db.getOIDCClient(clientId);
+    if (!client) {
+      throw httpError.notFound('client_not_found', `Client '${clientId}' not found`);
+    }
+
+    const { rule_type, subject_type, subject_value, description } = req.body;
+
+    if (!rule_type || !subject_type || !subject_value) {
+      throw httpError.badRequest('missing_params', 'rule_type, subject_type, and subject_value are required');
+    }
+
+    if (!['allow', 'deny'].includes(rule_type)) {
+      throw httpError.badRequest('invalid_rule_type', 'rule_type must be "allow" or "deny"');
+    }
+
+    if (!['did', 'handle_pattern'].includes(subject_type)) {
+      throw httpError.badRequest('invalid_subject_type', 'subject_type must be "did" or "handle_pattern"');
+    }
+
+    if (subject_type === 'did' && !subject_value.startsWith('did:')) {
+      throw httpError.badRequest('invalid_did', 'DID must start with "did:"');
+    }
+
+    if (subject_type === 'handle_pattern') {
+      if (subject_value !== '*' && !subject_value.match(/^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/)) {
+        throw httpError.badRequest('invalid_pattern', 'Handle pattern must be "*", "*.domain", or an exact handle');
+      }
+    }
+
+    const rule = db.createClientAccessRule({
+      client_id: clientId,
+      rule_type,
+      subject_type,
+      subject_value,
+      description: description || null,
+    });
+
+    db.logAuditEvent('client.access_rule_create', 'admin', `${clientId}:${rule.id}`, `Created ${rule_type} rule for ${subject_type}:${subject_value}`, clientIp(req));
+
+    res.status(201).json(rule);
+  });
+
+  /**
+   * DELETE /admin/clients/:clientId/access/:ruleId
+   * Delete an access rule for a client.
+   */
+  router.delete('/clients/:clientId/access/:ruleId', requireAdmin, async (req: Request, res: Response) => {
+    const clientId = String(req.params.clientId);
+    const ruleId = String(req.params.ruleId);
+    db.deleteClientAccessRule(parseInt(ruleId, 10));
+    db.logAuditEvent('client.access_rule_delete', 'admin', `${clientId}:${ruleId}`, 'Deleted client access rule', clientIp(req));
+    res.json({ message: 'Client access rule deleted' });
+  });
+
+  /**
+   * POST /admin/clients/:clientId/access/check
+   * Test if a DID/handle would be allowed for a client.
+   */
+  router.post('/clients/:clientId/access/check', requireAdmin, async (req: Request, res: Response) => {
+    const clientId = String(req.params.clientId);
+    const client = db.getOIDCClient(clientId);
+    if (!client) {
+      throw httpError.notFound('client_not_found', `Client '${clientId}' not found`);
+    }
+
+    const { did, handle } = req.body;
+    if (!did || !handle) {
+      throw httpError.badRequest('missing_params', 'did and handle are required');
+    }
+
+    if (!client.require_access_check) {
+      return res.json({
+        allowed: true,
+        matched_rule_id: null,
+        reason: 'Access check not enabled for this client (open access)',
+      });
+    }
+
+    const rules = db.getClientAccessRulesForCheck(clientId);
+    const totalRules = rules.denyRules.length + rules.originAllowRules.length + rules.globalAllowRules.length;
+
+    if (totalRules === 0) {
+      return res.json({
+        allowed: false,
+        matched_rule_id: null,
+        reason: 'Access check enabled but no rules configured (default deny)',
+      });
+    }
+
+    const result = checkAccess(did, handle, rules);
+    res.json(result);
+  });
+
+  /**
+   * PATCH /admin/clients/:clientId/access-check
+   * Toggle require_access_check for a client.
+   *
+   * Body:
+   * - enabled: boolean
+   */
+  router.patch('/clients/:clientId/access-check', requireAdmin, async (req: Request, res: Response) => {
+    const clientId = String(req.params.clientId);
+    const client = db.getOIDCClient(clientId);
+    if (!client) {
+      throw httpError.notFound('client_not_found', `Client '${clientId}' not found`);
+    }
+
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      throw httpError.badRequest('invalid_enabled', 'enabled must be a boolean');
+    }
+
+    db.setClientAccessCheck(clientId, enabled);
+    db.logAuditEvent('client.access_check_toggle', 'admin', clientId, `Set require_access_check=${enabled}`, clientIp(req));
+
+    res.json({ message: `Access check ${enabled ? 'enabled' : 'disabled'} for ${clientId}`, require_access_check: enabled });
+  });
+
   // ===== Audit Log =====
 
   /**

@@ -44,6 +44,17 @@ export interface ProxyAccessRule {
   created_at: number;
 }
 
+/** An access control rule for an OIDC client or Legacy HMAC app */
+export interface ClientAccessRule {
+  id: number;
+  client_id: string;
+  rule_type: 'allow' | 'deny';
+  subject_type: 'did' | 'handle_pattern';
+  subject_value: string;
+  description: string | null;
+  created_at: number;
+}
+
 /** Result of an access check */
 export interface AccessCheckResult {
   allowed: boolean;

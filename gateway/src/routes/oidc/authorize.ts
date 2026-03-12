@@ -12,6 +12,7 @@ import type { OAuthService } from '../../services/oauth.js';
 import type { PasskeyService } from '../../services/passkey.js';
 import { parseScopes, hasOpenIdScope, validateScopes } from '../../services/oidc/claims.js';
 import { isValidCodeChallengeMethod } from '../../services/oidc/pkce.js';
+import { checkAccess } from '../../utils/access-check.js';
 
 export function createAuthorizeRouter(
   db: DatabaseService,
@@ -585,6 +586,23 @@ export function createAuthorizeRouter(
 
       console.log(`[OIDC Passkey] Authenticated user: ${result.handle} (${result.did})`);
 
+      // Check client access rules
+      const oidcClient = db.getOIDCClient(authData.client_id);
+      if (oidcClient?.require_access_check) {
+        const rules = db.getClientAccessRulesForCheck(authData.client_id);
+        const totalRules = rules.denyRules.length + rules.originAllowRules.length + rules.globalAllowRules.length;
+        if (totalRules > 0) {
+          const accessResult = checkAccess(result.did, result.handle, rules);
+          if (!accessResult.allowed) {
+            console.log(`[OIDC ACL] Access denied for ${result.handle} (${result.did}) to ${authData.client_id}: ${accessResult.reason}`);
+            return res.status(403).json({
+              error: 'access_denied',
+              error_description: 'You do not have access to this application',
+            });
+          }
+        }
+      }
+
       // Update the authorization code with the user's identity
       db.updateAuthorizationCodeUser(auth_code, result.did, result.handle);
 
@@ -703,6 +721,21 @@ export function createAuthorizeRouter(
       // Update with user info
       db.updateAuthorizationCodeUser(oidcAuthCode, did, handle);
 
+      // Check client access rules
+      const oidcClient = db.getOIDCClient(authData.client_id);
+      if (oidcClient?.require_access_check) {
+        const rules = db.getClientAccessRulesForCheck(authData.client_id);
+        const totalRules = rules.denyRules.length + rules.originAllowRules.length + rules.globalAllowRules.length;
+        if (totalRules > 0) {
+          const accessResult = checkAccess(did, handle, rules);
+          if (!accessResult.allowed) {
+            console.log(`[OIDC ACL] Access denied for ${handle} (${did}) to ${authData.client_id}: ${accessResult.reason}`);
+            db.deleteOAuthState(state);
+            return res.status(403).type('html').send(renderAccessDeniedPage(oidcClient.name || authData.client_id, res.locals.cspNonce));
+          }
+        }
+      }
+
       // Build the redirect URL back to the original client
       const clientRedirectUrl = new URL(authData.redirect_uri);
       clientRedirectUrl.searchParams.set('code', oidcAuthCode);
@@ -727,6 +760,56 @@ export function createAuthorizeRouter(
   });
 
   return router;
+}
+
+/**
+ * Render access denied page for OIDC clients
+ */
+function renderAccessDeniedPage(clientName: string, nonce?: string): string {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Not Authorized - ATAuth</title>
+  <style${nonce ? ` nonce="${nonce}"` : ''}>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      background-image:
+        radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.12) 0%, transparent 50%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      text-align: center;
+    }
+    h1 { font-size: 22px; margin-bottom: 12px; color: #fca5a5; font-weight: 600; }
+    .subtitle { color: #94a3b8; margin-bottom: 8px; font-size: 14px; line-height: 1.6; }
+    .client-name { color: #e2e8f0; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Not Authorized</h1>
+    <p class="subtitle">Your account does not have access to <span class="client-name">${clientName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')}</span>.</p>
+    <p class="subtitle">Contact the administrator if you believe this is an error.</p>
+  </div>
+</body>
+</html>`;
 }
 
 /**

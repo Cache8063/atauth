@@ -45,6 +45,8 @@ export interface AppConfig {
   hmac_secret: string;
   token_ttl_seconds: number;
   callback_url?: string;
+  /** Whether to enforce client-level access rules (default: false) */
+  require_access_check?: boolean | number;
 }
 
 export interface OAuthState {

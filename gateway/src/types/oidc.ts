@@ -34,6 +34,8 @@ export interface OIDCClientConfig {
   refresh_token_ttl_seconds: number;
   require_pkce: boolean;
   token_endpoint_auth_method: TokenEndpointAuthMethod;
+  /** Whether to enforce client-level access rules (default: false = open access) */
+  require_access_check?: boolean;
   created_at: Date;
 }
 

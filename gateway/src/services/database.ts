@@ -27,6 +27,7 @@ import type {
   ProxyAllowedOrigin,
   ProxyAuthRequest,
   ProxyAccessRule,
+  ClientAccessRule,
 } from '../types/index.js';
 
 export class DatabaseService {
@@ -303,7 +304,24 @@ export class DatabaseService {
         created_at INTEGER DEFAULT (unixepoch())
       );
       CREATE INDEX IF NOT EXISTS idx_proxy_access_rules_origin ON proxy_access_rules(origin_id);
+
+      -- Client-level access rules (for OIDC clients and Legacy HMAC apps)
+      CREATE TABLE IF NOT EXISTS client_access_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id TEXT NOT NULL,
+        rule_type TEXT NOT NULL CHECK(rule_type IN ('allow', 'deny')),
+        subject_type TEXT NOT NULL CHECK(subject_type IN ('did', 'handle_pattern')),
+        subject_value TEXT NOT NULL,
+        description TEXT,
+        created_at INTEGER DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS idx_client_access_rules_client ON client_access_rules(client_id);
     `);
+
+    // Add require_access_check column to apps table if it doesn't exist
+    if (!columnNames.includes('require_access_check')) {
+      this.db.exec('ALTER TABLE apps ADD COLUMN require_access_check INTEGER DEFAULT 0');
+    }
 
     // Audit log for admin operations
     this.db.exec(`
@@ -1145,6 +1163,7 @@ export class DatabaseService {
       access_token_ttl_seconds: number;
       refresh_token_ttl_seconds: number;
       require_pkce: number;
+      require_access_check: number;
       token_endpoint_auth_method: string;
       created_at: string;
     } | undefined;
@@ -1163,6 +1182,7 @@ export class DatabaseService {
       access_token_ttl_seconds: row.access_token_ttl_seconds,
       refresh_token_ttl_seconds: row.refresh_token_ttl_seconds,
       require_pkce: Boolean(row.require_pkce),
+      require_access_check: Boolean(row.require_access_check),
       token_endpoint_auth_method: row.token_endpoint_auth_method as 'client_secret_basic' | 'client_secret_post' | 'none',
       created_at: new Date(row.created_at),
     };
@@ -1223,6 +1243,7 @@ export class DatabaseService {
       access_token_ttl_seconds: number;
       refresh_token_ttl_seconds: number;
       require_pkce: number;
+      require_access_check: number;
       token_endpoint_auth_method: string;
       created_at: string;
     }>;
@@ -1240,6 +1261,7 @@ export class DatabaseService {
       access_token_ttl_seconds: row.access_token_ttl_seconds,
       refresh_token_ttl_seconds: row.refresh_token_ttl_seconds,
       require_pkce: Boolean(row.require_pkce),
+      require_access_check: Boolean(row.require_access_check),
       token_endpoint_auth_method: row.token_endpoint_auth_method as 'client_secret_basic' | 'client_secret_post' | 'none',
       created_at: new Date(row.created_at),
     }));
@@ -1252,6 +1274,7 @@ export class DatabaseService {
     grant_types?: string[];
     allowed_scopes?: string[];
     require_pkce?: boolean;
+    require_access_check?: boolean;
     token_endpoint_auth_method?: string;
     id_token_ttl_seconds?: number;
     access_token_ttl_seconds?: number;
@@ -1283,6 +1306,10 @@ export class DatabaseService {
     if (updates.require_pkce !== undefined) {
       sets.push('require_pkce = ?');
       values.push(updates.require_pkce ? 1 : 0);
+    }
+    if (updates.require_access_check !== undefined) {
+      sets.push('require_access_check = ?');
+      values.push(updates.require_access_check ? 1 : 0);
     }
     if (updates.token_endpoint_auth_method !== undefined) {
       sets.push('token_endpoint_auth_method = ?');
@@ -1559,5 +1586,74 @@ export class DatabaseService {
     const stmt = this.db.prepare('SELECT id FROM proxy_allowed_origins WHERE origin = ? LIMIT 1');
     const row = stmt.get(origin) as { id: number } | undefined;
     return row?.id ?? null;
+  }
+
+  // Client access rule methods
+
+  createClientAccessRule(rule: Omit<ClientAccessRule, 'id' | 'created_at'>): ClientAccessRule {
+    const stmt = this.db.prepare(`
+      INSERT INTO client_access_rules (client_id, rule_type, subject_type, subject_value, description)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      rule.client_id, rule.rule_type, rule.subject_type,
+      rule.subject_value, rule.description,
+    );
+    return {
+      id: result.lastInsertRowid as number,
+      client_id: rule.client_id,
+      rule_type: rule.rule_type,
+      subject_type: rule.subject_type,
+      subject_value: rule.subject_value,
+      description: rule.description,
+      created_at: Math.floor(Date.now() / 1000),
+    };
+  }
+
+  deleteClientAccessRule(id: number): void {
+    this.db.prepare('DELETE FROM client_access_rules WHERE id = ?').run(id);
+  }
+
+  listClientAccessRules(clientId?: string): ClientAccessRule[] {
+    if (clientId !== undefined) {
+      const stmt = this.db.prepare(
+        'SELECT * FROM client_access_rules WHERE client_id = ? ORDER BY rule_type ASC, created_at ASC',
+      );
+      return stmt.all(clientId) as ClientAccessRule[];
+    }
+    const stmt = this.db.prepare(
+      'SELECT * FROM client_access_rules ORDER BY client_id ASC, rule_type ASC, created_at ASC',
+    );
+    return stmt.all() as ClientAccessRule[];
+  }
+
+  getClientAccessRulesForCheck(clientId: string): {
+    denyRules: ClientAccessRule[];
+    originAllowRules: ClientAccessRule[];
+    globalAllowRules: ClientAccessRule[];
+  } {
+    const stmt = this.db.prepare(
+      'SELECT * FROM client_access_rules WHERE client_id = ?',
+    );
+    const rules = stmt.all(clientId) as ClientAccessRule[];
+
+    const denyRules: ClientAccessRule[] = [];
+    const originAllowRules: ClientAccessRule[] = [];
+
+    for (const rule of rules) {
+      if (rule.rule_type === 'deny') {
+        denyRules.push(rule);
+      } else {
+        // All client rules are treated as client-specific (like origin-specific)
+        originAllowRules.push(rule);
+      }
+    }
+
+    // No global rules for client access (all rules are client-specific)
+    return { denyRules, originAllowRules, globalAllowRules: [] };
+  }
+
+  setClientAccessCheck(clientId: string, enabled: boolean): void {
+    this.db.prepare('UPDATE apps SET require_access_check = ? WHERE id = ?').run(enabled ? 1 : 0, clientId);
   }
 }

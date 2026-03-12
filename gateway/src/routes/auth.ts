@@ -11,6 +11,7 @@ import { OAuthService } from '../services/oauth.js';
 import { DatabaseService } from '../services/database.js';
 import { createGatewayToken } from '../utils/hmac.js';
 import { httpError } from '../utils/errors.js';
+import { checkAccess } from '../utils/access-check.js';
 
 /**
  * Validate a redirect URI against an app's allowed callback URL.
@@ -155,6 +156,19 @@ export function createAuthRoutes(
     }
 
     const result = await oauth.handleCallback(params);
+
+    // Check client access rules
+    if (app.require_access_check) {
+      const rules = db.getClientAccessRulesForCheck(savedState.app_id);
+      const totalRules = rules.denyRules.length + rules.originAllowRules.length + rules.globalAllowRules.length;
+      if (totalRules > 0) {
+        const accessResult = checkAccess(result.did, result.handle, rules);
+        if (!accessResult.allowed) {
+          console.log(`[Auth ACL] Access denied for ${result.handle} (${result.did}) to ${savedState.app_id}: ${accessResult.reason}`);
+          throw httpError.forbidden('access_denied', 'You do not have access to this application');
+        }
+      }
+    }
 
     const existingMapping = db.getUserMapping(result.did, savedState.app_id);
     const userId = existingMapping?.user_id ?? null;
