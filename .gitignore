@@ -65,3 +65,4 @@ coverage/
 
 # Gateway data
 gateway/data/
+SECURITY-AUDIT*.md
