@@ -9,10 +9,19 @@ import type { KeyManager } from './keys.js';
 import type { IDTokenClaims, AccessTokenClaims, TokenResponse } from '../../types/index.js';
 
 export class TokenService {
+  private isRevoked?: (jti: string) => boolean;
+
   constructor(
     private keyManager: KeyManager,
     private issuer: string
   ) {}
+
+  /**
+   * Set a revocation checker function (called during access token verification)
+   */
+  setRevocationChecker(checker: (jti: string) => boolean): void {
+    this.isRevoked = checker;
+  }
 
   /**
    * Create an ID Token
@@ -161,6 +170,11 @@ export class TokenService {
         return null;
       }
 
+      // Check revocation blacklist
+      if (this.isRevoked && typeof payload.jti === 'string' && this.isRevoked(payload.jti)) {
+        return null;
+      }
+
       return payload as unknown as AccessTokenClaims;
     } catch {
       return null;
@@ -256,12 +270,12 @@ export class TokenService {
         kid?: string;
       };
 
-      // Get the key
+      // Get the key — if kid is specified, require it to match
       let key: { privateKey: crypto.KeyObject; algorithm: 'ES256' | 'RS256' } | null = null;
       if (header.kid) {
         key = this.keyManager.getKeyByKid(header.kid);
-      }
-      if (!key) {
+        // Reject if kid is present but not found (don't fall back)
+      } else {
         const signingKey = this.keyManager.getSigningKey();
         if (signingKey) {
           key = { privateKey: signingKey.privateKey, algorithm: signingKey.algorithm };

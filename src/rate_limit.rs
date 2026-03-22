@@ -132,7 +132,7 @@ impl RateLimiter {
     /// Returns `Ok(())` if allowed, or `Err(AuthError::RateLimited)` with
     /// the number of seconds remaining in the lockout.
     pub fn check(&self, ip: &IpAddr) -> AuthResult<()> {
-        let records = self.records.read().unwrap();
+        let records = self.records.read().unwrap_or_else(|e| e.into_inner());
 
         if let Some(record) = records.get(ip) {
             // Check if in lockout
@@ -150,7 +150,7 @@ impl RateLimiter {
 
     /// Record a failed authentication attempt for an IP.
     pub fn record_failure(&self, ip: &IpAddr) {
-        let mut records = self.records.write().unwrap();
+        let mut records = self.records.write().unwrap_or_else(|e| e.into_inner());
 
         // Cleanup if at capacity
         if records.len() >= self.config.max_tracked_ips {
@@ -181,13 +181,13 @@ impl RateLimiter {
 
     /// Record a successful authentication, clearing the failure count.
     pub fn record_success(&self, ip: &IpAddr) {
-        let mut records = self.records.write().unwrap();
+        let mut records = self.records.write().unwrap_or_else(|e| e.into_inner());
         records.remove(ip);
     }
 
     /// Clear rate limiting for a specific IP.
     pub fn clear(&self, ip: &IpAddr) {
-        let mut records = self.records.write().unwrap();
+        let mut records = self.records.write().unwrap_or_else(|e| e.into_inner());
         records.remove(ip);
     }
 
@@ -195,7 +195,7 @@ impl RateLimiter {
     ///
     /// Returns `None` if not locked out or `Some(seconds)` remaining.
     pub fn lockout_remaining(&self, ip: &IpAddr) -> Option<u64> {
-        let records = self.records.read().unwrap();
+        let records = self.records.read().unwrap_or_else(|e| e.into_inner());
 
         records.get(ip).and_then(|record| {
             record.lockout_start.and_then(|start| {
@@ -211,13 +211,13 @@ impl RateLimiter {
 
     /// Get the number of failed attempts for an IP.
     pub fn attempt_count(&self, ip: &IpAddr) -> u32 {
-        let records = self.records.read().unwrap();
+        let records = self.records.read().unwrap_or_else(|e| e.into_inner());
         records.get(ip).map(|r| r.attempts).unwrap_or(0)
     }
 
     /// Clean up expired records to free memory.
     pub fn cleanup(&self) {
-        let mut records = self.records.write().unwrap();
+        let mut records = self.records.write().unwrap_or_else(|e| e.into_inner());
         self.cleanup_internal(&mut records);
     }
 
@@ -246,7 +246,7 @@ impl RateLimiter {
 
     /// Get current number of tracked IPs.
     pub fn tracked_count(&self) -> usize {
-        self.records.read().unwrap().len()
+        self.records.read().unwrap_or_else(|e| e.into_inner()).len()
     }
 }
 

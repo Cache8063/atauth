@@ -263,10 +263,17 @@ export function createEmailRouter(
         const client = db.getOIDCClient(client_id);
         const mapping = db.getUserMapping(result.did, client_id);
         if (client) {
+          // Restrict recovery scope to standard scopes only
+          const allowedRecoveryScopes = ['openid', 'profile', 'email'];
+          const requestedScopes = (scope || 'openid').split(' ');
+          const validatedScope = requestedScopes
+            .filter((s: string) => allowedRecoveryScopes.includes(s))
+            .join(' ') || 'openid';
+
           const tokenResponse = oidcService.tokenService.createTokenResponse({
             sub: result.did,
             clientId: client_id,
-            scope: scope || 'openid',
+            scope: validatedScope,
             did: result.did,
             handle: mapping?.handle || '',
             accessTokenTtl: client.access_token_ttl_seconds,
@@ -334,7 +341,8 @@ async function authenticateRequest(
  * Validate email format
  */
 function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (email.length > 254) return false; // RFC 5321 max length
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   return emailRegex.test(email);
 }
 

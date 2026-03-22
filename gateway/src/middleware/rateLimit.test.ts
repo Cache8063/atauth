@@ -5,6 +5,7 @@ import { rateLimit } from './rateLimit.js';
 
 function createTestApp(maxRequests: number = 5, windowMs: number = 60000) {
   const app = express();
+  app.set('trust proxy', 1);
   app.use(rateLimit({ maxRequests, windowMs }));
   app.get('/test', (_req, res) => res.json({ ok: true }));
   return app;
@@ -64,13 +65,13 @@ describe('rateLimit middleware', () => {
     expect(res2.status).toBe(200);
   });
 
-  it('should use first IP from X-Forwarded-For with multiple IPs', async () => {
+  it('should rate limit same IP from X-Forwarded-For', async () => {
     const app = createTestApp(2);
 
-    // Both requests have same first IP, so they share the same counter
-    await request(app).get('/test').set('X-Forwarded-For', '1.2.3.4, 10.0.0.1');
-    await request(app).get('/test').set('X-Forwarded-For', '1.2.3.4, 10.0.0.2');
-    const res = await request(app).get('/test').set('X-Forwarded-For', '1.2.3.4, 10.0.0.3');
+    // All requests from same IP share the same counter
+    await request(app).get('/test').set('X-Forwarded-For', '1.2.3.4');
+    await request(app).get('/test').set('X-Forwarded-For', '1.2.3.4');
+    const res = await request(app).get('/test').set('X-Forwarded-For', '1.2.3.4');
 
     expect(res.status).toBe(429);
   });

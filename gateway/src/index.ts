@@ -131,6 +131,9 @@ async function main(): Promise<void> {
   if (config.forwardAuth.enabled && !config.forwardAuth.sessionSecret) {
     missing.push('FORWARD_AUTH_SESSION_SECRET is required when FORWARD_AUTH_ENABLED=true');
   }
+  if (config.adminToken && config.adminToken.length < 32) {
+    missing.push('ADMIN_TOKEN must be at least 32 characters');
+  }
   if (missing.length > 0) {
     console.error('Configuration error:');
     for (const msg of missing) console.error(`  - ${msg}`);
@@ -231,10 +234,8 @@ async function main(): Promise<void> {
     contentSecurityPolicy: {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-        // Chrome enforces form-action on redirect targets (not just the action URL).
-        // The OIDC login form POSTs to self, but the response redirects to bsky.social
-        // or other PDS hosts. Without this, Chrome blocks the redirect silently.
-        'form-action': null,
+        // Restrict form-action to self + CORS origins (which include PDS hosts)
+        'form-action': ["'self'", ...config.corsOrigins],
         // Allow inline scripts with per-request nonce (for login page)
         'script-src': ["'self'", (_req: any, res: any) => `'nonce-${res.locals.cspNonce}'`],
       },
@@ -418,10 +419,13 @@ async function main(): Promise<void> {
     const proxySessionsDeleted = db.cleanupExpiredProxySessions();
     const proxyAuthRequestsDeleted = db.cleanupExpiredProxyAuthRequests();
     const auditLogsDeleted = db.cleanupOldAuditLogs();
+    const revokedTokensDeleted = db.cleanupExpiredRevokedTokens();
+    const passkeyChallengesDeleted = db.cleanupExpiredPasskeyChallenges();
+    const oauthSessionsDeleted = db.cleanupExpiredOAuthSessions();
 
-    const total = statesDeleted + sessionsDeleted + authCodesDeleted + refreshTokensDeleted + emailCodesDeleted + proxySessionsDeleted + proxyAuthRequestsDeleted + auditLogsDeleted;
+    const total = statesDeleted + sessionsDeleted + authCodesDeleted + refreshTokensDeleted + emailCodesDeleted + proxySessionsDeleted + proxyAuthRequestsDeleted + auditLogsDeleted + revokedTokensDeleted + passkeyChallengesDeleted + oauthSessionsDeleted;
     if (total > 0) {
-      console.log(`Cleanup: ${statesDeleted} OAuth states, ${sessionsDeleted} sessions, ${authCodesDeleted} auth codes, ${refreshTokensDeleted} refresh tokens, ${emailCodesDeleted} email codes, ${proxySessionsDeleted} proxy sessions, ${proxyAuthRequestsDeleted} proxy auth requests`);
+      console.log(`Cleanup: ${statesDeleted} OAuth states, ${sessionsDeleted} sessions, ${authCodesDeleted} auth codes, ${refreshTokensDeleted} refresh tokens, ${emailCodesDeleted} email codes, ${proxySessionsDeleted} proxy sessions, ${proxyAuthRequestsDeleted} proxy auth requests, ${revokedTokensDeleted} revoked tokens, ${passkeyChallengesDeleted} passkey challenges, ${oauthSessionsDeleted} oauth sessions`);
     }
   }, 60 * 60 * 1000);
 

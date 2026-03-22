@@ -26,9 +26,13 @@ export interface LoginEvent {
 
 let txnCounter = 0;
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export async function notifyLogin(config: WebhookConfig, event: LoginEvent): Promise<void> {
   const text = `Login: ${event.handle} authenticated to ${event.client_name}`;
-  const html = `<b>Login</b>: <code>${event.handle}</code> (<code>${event.did}</code>) → <b>${event.client_name}</b>`;
+  const html = `<b>Login</b>: <code>${escapeHtml(event.handle)}</code> (<code>${escapeHtml(event.did)}</code>) → <b>${escapeHtml(event.client_name)}</b>`;
   const txnId = `atauth-${Date.now()}-${++txnCounter}`;
   const roomId = encodeURIComponent(config.matrixRoomId);
 

@@ -133,10 +133,20 @@ export class EmailService {
     email: string,
     code: string
   ): { success: boolean; error?: string } {
+    // Check lockout
+    if (this.db.isEmailVerificationLocked(email)) {
+      return { success: false, error: 'Too many failed attempts. Try again later.' };
+    }
+
     const codeHash = this.hashCode(code);
     const verificationCode = this.db.getValidEmailVerificationCode(email, codeHash, 'verify');
 
     if (!verificationCode) {
+      // Track failed attempt
+      const attempts = this.db.incrementEmailAttempts(email);
+      if (attempts >= 5) {
+        this.db.lockEmailVerification(email, Date.now() + 15 * 60 * 1000);
+      }
       return { success: false, error: 'Invalid or expired verification code' };
     }
 
@@ -171,10 +181,20 @@ export class EmailService {
     email: string,
     code: string
   ): { success: boolean; did?: string; error?: string } {
+    // Check lockout
+    if (this.db.isEmailVerificationLocked(email)) {
+      return { success: false, error: 'Too many failed attempts. Try again later.' };
+    }
+
     const codeHash = this.hashCode(code);
     const verificationCode = this.db.getValidEmailVerificationCode(email, codeHash, 'recovery');
 
     if (!verificationCode) {
+      // Track failed attempt
+      const attempts = this.db.incrementEmailAttempts(email);
+      if (attempts >= 5) {
+        this.db.lockEmailVerification(email, Date.now() + 15 * 60 * 1000);
+      }
       return { success: false, error: 'Invalid or expired recovery code' };
     }
 

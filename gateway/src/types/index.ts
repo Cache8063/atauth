@@ -37,6 +37,7 @@ export interface AppSession {
   created_at: Date;
   expires_at: Date;
   refresh_token?: string;
+  connection_state?: SessionConnectionState;
 }
 
 export interface AppConfig {

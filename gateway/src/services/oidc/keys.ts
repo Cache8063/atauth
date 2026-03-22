@@ -10,13 +10,18 @@ import type { OIDCKey, JWK, JWKS } from '../../types/index.js';
 
 export class KeyManager {
   private encryptionKey: Buffer;
+  private legacyEncryptionKey: Buffer;
 
   constructor(
     private db: DatabaseService,
     encryptionSecret: string
   ) {
-    // Derive a 32-byte key from the secret using SHA-256
-    this.encryptionKey = crypto.createHash('sha256').update(encryptionSecret).digest();
+    // Derive key using HKDF (proper KDF with salt and info)
+    this.encryptionKey = Buffer.from(
+      crypto.hkdfSync('sha256', encryptionSecret, '', 'atauth-oidc-keys', 32)
+    );
+    // Keep legacy key for migration of existing encrypted data
+    this.legacyEncryptionKey = crypto.createHash('sha256').update(encryptionSecret).digest();
   }
 
   /**
@@ -209,7 +214,7 @@ export class KeyManager {
    * Encrypt a private key using AES-256-GCM
    */
   private encryptPrivateKey(pem: string): string {
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12); // NIST-recommended 12 bytes for GCM
     const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
 
     const encrypted = Buffer.concat([
@@ -219,7 +224,7 @@ export class KeyManager {
 
     const authTag = cipher.getAuthTag();
 
-    // Format: iv (16 bytes) + authTag (16 bytes) + encrypted data
+    // Format: iv (12 bytes) + authTag (16 bytes) + encrypted data
     const combined = Buffer.concat([iv, authTag, encrypted]);
     return combined.toString('base64');
   }
@@ -230,18 +235,27 @@ export class KeyManager {
   private decryptPrivateKey(encryptedBase64: string): string {
     const data = Buffer.from(encryptedBase64, 'base64');
 
-    const iv = data.subarray(0, 16);
-    const authTag = data.subarray(16, 32);
-    const encrypted = data.subarray(32);
+    // Try combinations: [HKDF key + 12-byte IV, HKDF key + 16-byte IV, legacy key + 16-byte IV]
+    const attempts: [Buffer, number][] = [
+      [this.encryptionKey, 12],
+      [this.encryptionKey, 16],
+      [this.legacyEncryptionKey, 16],
+    ];
 
-    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
-    decipher.setAuthTag(authTag);
+    for (const [key, ivLen] of attempts) {
+      try {
+        const iv = data.subarray(0, ivLen);
+        const authTag = data.subarray(ivLen, ivLen + 16);
+        const encrypted = data.subarray(ivLen + 16);
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+        decipher.setAuthTag(authTag);
+        const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+        return decrypted.toString('utf8');
+      } catch {
+        continue;
+      }
+    }
 
-    const decrypted = Buffer.concat([
-      decipher.update(encrypted),
-      decipher.final(),
-    ]);
-
-    return decrypted.toString('utf8');
+    throw new Error('Failed to decrypt private key');
   }
 }

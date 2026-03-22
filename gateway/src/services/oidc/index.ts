@@ -31,6 +31,7 @@ export class OIDCService {
     this.issuer = config.issuer;
     this.keyManager = new KeyManager(db, config.keySecret);
     this.tokenService = new TokenService(this.keyManager, config.issuer);
+    this.tokenService.setRevocationChecker((jti) => db.isTokenRevoked(jti));
   }
 
   /**
@@ -63,7 +64,7 @@ export class OIDCService {
         'client_secret_post',
         'none',
       ],
-      code_challenge_methods_supported: ['S256', 'plain'],
+      code_challenge_methods_supported: ['S256'],
       claims_supported: [
         'sub',
         'iss',

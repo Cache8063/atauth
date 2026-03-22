@@ -108,9 +108,28 @@ export function createRevokeRouter(db: DatabaseService): Router {
         }
       }
 
-      // Access tokens are JWTs and can't be truly revoked without a blacklist
-      // For now, we just return 200 OK as per RFC 7009
-      // A proper implementation would add the token to a revocation list
+      // Try to blacklist as an access token (JWT)
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString()) as {
+            jti?: string;
+            exp?: number;
+            client_id?: string;
+          };
+
+          if (payload.jti && payload.exp) {
+            // Verify client ownership if client_id provided
+            if (clientId && payload.client_id && payload.client_id !== clientId) {
+              res.status(200).send();
+              return;
+            }
+            db.addRevokedToken(payload.jti, payload.exp);
+          }
+        }
+      } catch {
+        // Not a valid JWT — ignore per RFC 7009
+      }
 
       res.status(200).send();
     } catch (error) {

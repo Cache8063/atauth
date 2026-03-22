@@ -94,6 +94,9 @@ export function createTokenRoutes(db: DatabaseService): Router {
     const now = Math.floor(Date.now() / 1000);
     const remainingSeconds = payload.exp - now;
 
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+
     res.json({
       did: payload.did,
       handle: payload.handle,

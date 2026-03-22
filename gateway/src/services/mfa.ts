@@ -130,7 +130,18 @@ export class MFAService {
     });
 
     const delta = totp.validate({ token: code, window: 1 });
-    return delta !== null;
+    if (delta === null) return false;
+
+    // Replay protection: compute absolute TOTP period and reject if already used
+    const currentPeriod = Math.floor(Date.now() / 30000);
+    const absolutePeriod = currentPeriod + delta;
+    const lastUsed = this.db.getTOTPLastUsedPeriod(did);
+    if (lastUsed !== null && absolutePeriod <= lastUsed) {
+      return false;
+    }
+    this.db.updateTOTPLastUsedPeriod(did, absolutePeriod);
+
+    return true;
   }
 
   /**

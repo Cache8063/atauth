@@ -8,9 +8,7 @@ import { NodeOAuthClient, NodeSavedState, NodeSavedSession } from '@atproto/oaut
 import { DatabaseService } from './database.js';
 import type { OAuthState } from '../types/index.js';
 
-// In-memory storage for OAuth client sessions
-const sessionStore = new Map<string, NodeSavedSession>();
-const stateStore = new Map<string, NodeSavedState>();
+// OAuth stores backed by SQLite for persistence across restarts
 
 // Capture the most recently set state key
 let pendingStateKey: string | null = null;
@@ -63,26 +61,30 @@ export class OAuthService {
         dpop_bound_access_tokens: true,
       },
       stateStore: {
-        async get(key: string): Promise<NodeSavedState | undefined> {
-          return stateStore.get(key);
+        get: async (key: string): Promise<NodeSavedState | undefined> => {
+          const row = this.db.getOAuthSession(key);
+          return row ? JSON.parse(row.data) as NodeSavedState : undefined;
         },
-        async set(key: string, state: NodeSavedState): Promise<void> {
-          stateStore.set(key, state);
+        set: async (key: string, state: NodeSavedState): Promise<void> => {
+          const expiresAt = Math.floor(Date.now() / 1000) + 600; // 10 min
+          this.db.saveOAuthSession(key, JSON.stringify(state), 'state', expiresAt);
           pendingStateKey = key;
         },
-        async del(key: string): Promise<void> {
-          stateStore.delete(key);
+        del: async (key: string): Promise<void> => {
+          this.db.deleteOAuthSession(key);
         },
       },
       sessionStore: {
-        async get(key: string): Promise<NodeSavedSession | undefined> {
-          return sessionStore.get(key);
+        get: async (key: string): Promise<NodeSavedSession | undefined> => {
+          const row = this.db.getOAuthSession(key);
+          return row ? JSON.parse(row.data) as NodeSavedSession : undefined;
         },
-        async set(key: string, session: NodeSavedSession): Promise<void> {
-          sessionStore.set(key, session);
+        set: async (key: string, session: NodeSavedSession): Promise<void> => {
+          const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 3600; // 30 days
+          this.db.saveOAuthSession(key, JSON.stringify(session), 'session', expiresAt);
         },
-        async del(key: string): Promise<void> {
-          sessionStore.delete(key);
+        del: async (key: string): Promise<void> => {
+          this.db.deleteOAuthSession(key);
         },
       },
     });
@@ -187,7 +189,7 @@ export class OAuthService {
    * Check if a PDS session exists for a DID.
    */
   hasPdsSession(did: string): boolean {
-    return sessionStore.has(did);
+    return !!this.db.getOAuthSession(did);
   }
 
   private async resolveDidToHandle(did: string): Promise<string | null> {

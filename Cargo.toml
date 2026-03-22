@@ -13,9 +13,8 @@ readme = "README.md"
 [features]
 default = ["session-sqlite"]
 session-sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
-session-postgres = ["tokio-postgres", "deadpool-postgres"]
 rate-limit = []
-full = ["session-sqlite", "session-postgres", "rate-limit"]
+full = ["session-sqlite", "rate-limit"]
 
 [dependencies]
 # Core cryptography
@@ -32,19 +31,18 @@ serde_json = "1"
 thiserror = "1"
 
 # Time
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = ">=0.4.20, <0.5", features = ["serde"] }
 
 # Async runtime (optional)
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
 
 # SQLite session store (optional)
-rusqlite = { version = "0.31", optional = true }
+rusqlite = { version = "0.33", optional = true }
 r2d2 = { version = "0.8", optional = true }
-r2d2_sqlite = { version = "0.24", optional = true }
+r2d2_sqlite = { version = "0.25", optional = true }
 
-# Postgres session store (optional)
-tokio-postgres = { version = "0.7", optional = true }
-deadpool-postgres = { version = "0.12", optional = true }
+# Secret zeroing on drop
+zeroize = "1"
 
 # Logging
 tracing = "0.1"

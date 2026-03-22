@@ -7,9 +7,27 @@
 
 import { Router, Request, Response } from 'express';
 import { DatabaseService } from '../services/database.js';
-import { createGatewayToken } from '../utils/hmac.js';
+import { createGatewayToken, verifyGatewayToken } from '../utils/hmac.js';
 import { httpError } from '../utils/errors.js';
 import type { SessionResolution, SessionConflict } from '../types/index.js';
+
+const SESSION_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes for pre-token endpoints
+
+function requireGatewayAuth(req: Request, db: DatabaseService, session: { did: string; app_id: string }): void {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw httpError.unauthorized('auth_required', 'Authorization header with gateway token required');
+  }
+  const token = authHeader.slice(7);
+  const app = db.getApp(session.app_id);
+  if (!app) {
+    throw httpError.notFound('app_not_found', 'Application not found');
+  }
+  const payload = verifyGatewayToken(token, app.hmac_secret);
+  if (!payload || payload.did !== session.did) {
+    throw httpError.unauthorized('invalid_token', 'Invalid or mismatched gateway token');
+  }
+}
 
 export function createSessionRoutes(db: DatabaseService): Router {
   const router = Router();
@@ -32,6 +50,11 @@ export function createSessionRoutes(db: DatabaseService): Router {
     const pendingSession = db.getSession(session_id);
     if (!pendingSession) {
       throw httpError.notFound('session_not_found', 'Pending session not found or expired');
+    }
+
+    // Session age check — only allow conflict checks on recently created sessions
+    if (Date.now() - pendingSession.created_at.getTime() > SESSION_MAX_AGE_MS) {
+      throw httpError.badRequest('session_expired', 'Session is too old for conflict check');
     }
 
     const activeSessions = db.getActiveSessionsByDid(pendingSession.did, app_id);
@@ -76,6 +99,14 @@ export function createSessionRoutes(db: DatabaseService): Router {
     const session = db.getSession(session_id);
     if (!session) {
       throw httpError.notFound('session_not_found', 'Session not found or expired');
+    }
+
+    // Only allow resolution of pending sessions within the age window
+    if (session.connection_state === 'connected') {
+      throw httpError.badRequest('already_resolved', 'Session has already been resolved');
+    }
+    if (Date.now() - session.created_at.getTime() > SESSION_MAX_AGE_MS) {
+      throw httpError.badRequest('session_expired', 'Session is too old for conflict resolution');
     }
 
     const app = db.getApp(app_id);
@@ -146,6 +177,8 @@ export function createSessionRoutes(db: DatabaseService): Router {
       throw httpError.notFound('session_not_found', 'Session not found');
     }
 
+    requireGatewayAuth(req, db, session);
+
     db.updateSessionConnectionState(session_id, state, client_info);
 
     res.json({ success: true, session_id, state });
@@ -166,6 +199,8 @@ export function createSessionRoutes(db: DatabaseService): Router {
     if (!session) {
       throw httpError.notFound('session_not_found', 'Session not found or expired');
     }
+
+    requireGatewayAuth(req, db, session);
 
     db.updateSessionActivity(session_id);
 
@@ -191,6 +226,8 @@ export function createSessionRoutes(db: DatabaseService): Router {
     if (!session) {
       throw httpError.notFound('session_not_found', 'Session not found or expired');
     }
+
+    requireGatewayAuth(req, db, session);
 
     const activeSessions = db.getActiveSessionsByDid(session.did, app_id);
 

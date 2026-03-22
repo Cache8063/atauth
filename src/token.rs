@@ -8,6 +8,7 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
+use zeroize::Zeroize;
 
 use crate::error::{AuthError, AuthResult};
 use crate::validation::{validate_did, validate_handle};
@@ -135,10 +136,8 @@ impl TokenVerifier {
 
     /// Create a token verifier without checking secret length.
     ///
-    /// **Warning**: This bypasses the minimum key length check. Only use this
-    /// for testing or when you have validated the key length yourself.
-    ///
-    /// For production code, prefer `new()` which enforces security requirements.
+    /// Only available in test builds. For production code, use `new()`.
+    #[cfg(test)]
     pub fn new_unchecked(secret: &[u8]) -> Self {
         Self {
             secret: secret.to_vec(),
@@ -303,6 +302,12 @@ impl TokenVerifier {
         let signature_b64 = URL_SAFE_NO_PAD.encode(&signature);
 
         Ok(format!("{}.{}", payload_b64, signature_b64))
+    }
+}
+
+impl Drop for TokenVerifier {
+    fn drop(&mut self) {
+        self.secret.zeroize();
     }
 }
 

@@ -7,7 +7,8 @@
 # ============================================
 # Stage 1: Build Gateway Backend
 # ============================================
-FROM node:20-alpine AS backend-builder
+# Pin to specific digest for reproducible builds (node:20-alpine as of 2026-03-22)
+FROM node:20-alpine@sha256:5bac2112f1a27db4775ce6ead86db9e0cbc087f0dbddfe3cbc11ecea122d5294 AS backend-builder
 
 WORKDIR /app
 
@@ -23,7 +24,7 @@ RUN npm run build
 # ============================================
 # Stage 2: Production Image
 # ============================================
-FROM node:20-alpine
+FROM node:20-alpine@sha256:5bac2112f1a27db4775ce6ead86db9e0cbc087f0dbddfe3cbc11ecea122d5294
 
 WORKDIR /app
 

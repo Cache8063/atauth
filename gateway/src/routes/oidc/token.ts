@@ -370,8 +370,21 @@ async function handleRefreshTokenGrant(
   // Revoke old refresh token (rotation)
   db.revokeRefreshToken(tokenHash);
 
-  // Generate new tokens
-  const tokenScope = scope || storedToken.scope;
+  // Validate requested scope is a subset of original grant (RFC 6749 Section 6)
+  let tokenScope = storedToken.scope;
+  if (scope && scope.trim() !== '') {
+    const requestedScopes = scope.split(' ');
+    const originalScopes = storedToken.scope.split(' ');
+    const invalidScopes = requestedScopes.filter(s => !originalScopes.includes(s));
+    if (invalidScopes.length > 0) {
+      res.status(400).json({
+        error: 'invalid_scope',
+        error_description: 'Requested scope exceeds original grant',
+      });
+      return;
+    }
+    tokenScope = scope;
+  }
 
   // Generate new refresh token
   const newRefreshToken = crypto.randomBytes(32).toString('base64url');

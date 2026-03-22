@@ -28,9 +28,6 @@ export interface PasskeyConfig {
   origin: string;
 }
 
-// In-memory challenge storage (in production, use Redis or database)
-const pendingChallenges = new Map<string, { challenge: string; expires: number }>();
-
 export class PasskeyService {
   private rpName: string;
   private rpID: string;
@@ -76,10 +73,7 @@ export class PasskeyService {
 
     // Store challenge for verification
     const challengeKey = `reg:${did}`;
-    pendingChallenges.set(challengeKey, {
-      challenge: options.challenge,
-      expires: Date.now() + 5 * 60 * 1000, // 5 minutes
-    });
+    this.db.savePasskeyChallenge(challengeKey, options.challenge, Math.floor(Date.now() / 1000) + 300);
 
     return options;
   }
@@ -95,24 +89,19 @@ export class PasskeyService {
   ): Promise<{ success: boolean; credentialId?: string; error?: string }> {
     // Get stored challenge
     const challengeKey = `reg:${did}`;
-    const storedChallenge = pendingChallenges.get(challengeKey);
+    const storedRecord = this.db.getPasskeyChallenge(challengeKey);
 
-    if (!storedChallenge) {
-      return { success: false, error: 'No registration challenge found' };
-    }
-
-    if (Date.now() > storedChallenge.expires) {
-      pendingChallenges.delete(challengeKey);
-      return { success: false, error: 'Registration challenge expired' };
+    if (!storedRecord) {
+      return { success: false, error: 'No registration challenge found or challenge expired' };
     }
 
     try {
       const verification: VerifiedRegistrationResponse = await verifyRegistrationResponse({
         response,
-        expectedChallenge: storedChallenge.challenge,
+        expectedChallenge: storedRecord.challenge,
         expectedOrigin: this.origin,
         expectedRPID: this.rpID,
-        requireUserVerification: false,
+        requireUserVerification: true,
       });
 
       if (!verification.verified || !verification.registrationInfo) {
@@ -135,7 +124,7 @@ export class PasskeyService {
       });
 
       // Clean up challenge
-      pendingChallenges.delete(challengeKey);
+      this.db.deletePasskeyChallenge(challengeKey);
 
       return { success: true, credentialId: credential.id };
     } catch (error) {
@@ -165,12 +154,8 @@ export class PasskeyService {
     });
 
     // Store challenge for verification
-    // Use a unique key since we might not know the DID yet
     const challengeKey = `auth:${options.challenge}`;
-    pendingChallenges.set(challengeKey, {
-      challenge: options.challenge,
-      expires: Date.now() + 5 * 60 * 1000, // 5 minutes
-    });
+    this.db.savePasskeyChallenge(challengeKey, options.challenge, Math.floor(Date.now() / 1000) + 300);
 
     return options;
   }
@@ -184,15 +169,10 @@ export class PasskeyService {
   ): Promise<{ success: boolean; did?: string; handle?: string; error?: string }> {
     // Get stored challenge
     const challengeKey = `auth:${expectedChallenge}`;
-    const storedChallenge = pendingChallenges.get(challengeKey);
+    const storedRecord = this.db.getPasskeyChallenge(challengeKey);
 
-    if (!storedChallenge) {
-      return { success: false, error: 'No authentication challenge found' };
-    }
-
-    if (Date.now() > storedChallenge.expires) {
-      pendingChallenges.delete(challengeKey);
-      return { success: false, error: 'Authentication challenge expired' };
+    if (!storedRecord) {
+      return { success: false, error: 'No authentication challenge found or challenge expired' };
     }
 
     // Look up credential
@@ -206,7 +186,7 @@ export class PasskeyService {
     try {
       const verification: VerifiedAuthenticationResponse = await verifyAuthenticationResponse({
         response,
-        expectedChallenge: storedChallenge.challenge,
+        expectedChallenge: storedRecord.challenge,
         expectedOrigin: this.origin,
         expectedRPID: this.rpID,
         credential: {
@@ -215,7 +195,7 @@ export class PasskeyService {
           counter: credential.counter,
           transports: credential.transports as AuthenticatorTransportFuture[] | undefined,
         },
-        requireUserVerification: false,
+        requireUserVerification: true,
       });
 
       if (!verification.verified) {
@@ -226,7 +206,7 @@ export class PasskeyService {
       this.db.updatePasskeyCounter(credential.id, verification.authenticationInfo.newCounter);
 
       // Clean up challenge
-      pendingChallenges.delete(challengeKey);
+      this.db.deletePasskeyChallenge(challengeKey);
 
       return {
         success: true,
@@ -292,13 +272,3 @@ export class PasskeyService {
     return this.getPasskeyCount(did) > 0;
   }
 }
-
-// Cleanup expired challenges periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of pendingChallenges.entries()) {
-    if (now > value.expires) {
-      pendingChallenges.delete(key);
-    }
-  }
-}, 60 * 1000); // Every minute

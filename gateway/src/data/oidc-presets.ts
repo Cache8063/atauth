@@ -24,6 +24,8 @@ export interface OIDCAppPreset {
   token_endpoint_auth_method: 'client_secret_basic' | 'client_secret_post' | 'none';
   /** Whether PKCE should be required */
   require_pkce: boolean;
+  /** Explanation for why PKCE is disabled (required when require_pkce is false) */
+  pkce_note?: string;
   /** Token TTLs in seconds */
   id_token_ttl_seconds: number;
   access_token_ttl_seconds: number;
@@ -133,6 +135,7 @@ export const OIDC_APP_PRESETS: OIDCAppPreset[] = [
     redirect_uri_template: 'https://{{DOMAIN}}/login/atauth/callback',
     token_endpoint_auth_method: 'client_secret_basic',
     require_pkce: false,
+    pkce_note: 'Wiki.js does not support PKCE in its OIDC implementation',
     id_token_ttl_seconds: 3600,
     access_token_ttl_seconds: 3600,
     refresh_token_ttl_seconds: 604800,
@@ -148,6 +151,7 @@ export const OIDC_APP_PRESETS: OIDCAppPreset[] = [
     redirect_uri_template: 'https://{{DOMAIN}}',
     token_endpoint_auth_method: 'client_secret_basic',
     require_pkce: false,
+    pkce_note: 'Portainer does not support PKCE in its OAuth implementation',
     id_token_ttl_seconds: 3600,
     access_token_ttl_seconds: 3600,
     refresh_token_ttl_seconds: 604800,
@@ -238,6 +242,7 @@ export const OIDC_APP_PRESETS: OIDCAppPreset[] = [
     redirect_uri_template: 'https://{{DOMAIN}}/signup/openid/complete',
     token_endpoint_auth_method: 'client_secret_post',
     require_pkce: false,
+    pkce_note: 'Mattermost does not support PKCE for OpenID Connect',
     id_token_ttl_seconds: 3600,
     access_token_ttl_seconds: 3600,
     refresh_token_ttl_seconds: 604800,
@@ -253,6 +258,7 @@ export const OIDC_APP_PRESETS: OIDCAppPreset[] = [
     redirect_uri_template: 'https://{{DOMAIN}}/auth/openid/atauth',
     token_endpoint_auth_method: 'client_secret_basic',
     require_pkce: false,
+    pkce_note: 'Vikunja does not support PKCE in its OpenID Connect integration',
     id_token_ttl_seconds: 3600,
     access_token_ttl_seconds: 3600,
     refresh_token_ttl_seconds: 604800,
@@ -268,6 +274,7 @@ export const OIDC_APP_PRESETS: OIDCAppPreset[] = [
     redirect_uri_template: 'https://{{DOMAIN}}/auth/oidc/callback/',
     token_endpoint_auth_method: 'client_secret_post',
     require_pkce: false,
+    pkce_note: 'Plane does not support PKCE and requires manual endpoint URLs',
     id_token_ttl_seconds: 3600,
     access_token_ttl_seconds: 3600,
     refresh_token_ttl_seconds: 604800,
@@ -283,6 +290,7 @@ export const OIDC_APP_PRESETS: OIDCAppPreset[] = [
     redirect_uri_template: 'https://{{DOMAIN}}/auth/callback',
     token_endpoint_auth_method: 'client_secret_basic',
     require_pkce: false,
+    pkce_note: 'GoToSocial does not support PKCE in its OIDC integration',
     id_token_ttl_seconds: 3600,
     access_token_ttl_seconds: 3600,
     refresh_token_ttl_seconds: 604800,
@@ -298,6 +306,7 @@ export const OIDC_APP_PRESETS: OIDCAppPreset[] = [
     redirect_uri_template: 'https://{{DOMAIN}}/login/oauth2/code/atauth',
     token_endpoint_auth_method: 'client_secret_basic',
     require_pkce: false,
+    pkce_note: 'Stirling-PDF (Spring Security OAuth2) does not support PKCE',
     id_token_ttl_seconds: 3600,
     access_token_ttl_seconds: 3600,
     refresh_token_ttl_seconds: 604800,
@@ -328,6 +337,7 @@ export const OIDC_APP_PRESETS: OIDCAppPreset[] = [
     redirect_uri_template: 'https://{{DOMAIN}}/i/oidc/',
     token_endpoint_auth_method: 'client_secret_basic',
     require_pkce: false,
+    pkce_note: 'FreshRSS (mod_auth_openidc) does not reliably support PKCE',
     id_token_ttl_seconds: 3600,
     access_token_ttl_seconds: 3600,
     refresh_token_ttl_seconds: 604800,

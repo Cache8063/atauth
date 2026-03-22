@@ -111,15 +111,10 @@ setInterval(() => store.cleanup(), 5 * 60 * 1000);
 
 /**
  * Get client IP address from request.
- * Handles proxied requests via X-Forwarded-For header.
+ * Relies on Express trust proxy setting (configured in index.ts).
  */
 function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const ips = (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',');
-    return ips[0].trim();
-  }
-  return req.ip || req.socket.remoteAddress || 'unknown';
+  return req.ip || 'unknown';
 }
 
 /**

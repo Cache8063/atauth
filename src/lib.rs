@@ -5,7 +5,7 @@
 //! ## Features
 //!
 //! - **Token Verification**: Secure HMAC-SHA256 token verification with constant-time comparison
-//! - **Session Management**: Trait-based session storage with SQLite and PostgreSQL backends
+//! - **Session Management**: Trait-based session storage with SQLite backend
 //! - **Rate Limiting**: IP-based rate limiting with configurable thresholds
 //! - **Input Validation**: DID and handle format validation
 //!
@@ -49,7 +49,7 @@ pub mod error;
 pub mod token;
 pub mod validation;
 
-#[cfg(any(feature = "session-sqlite", feature = "session-postgres"))]
+#[cfg(feature = "session-sqlite")]
 pub mod session;
 
 #[cfg(feature = "rate-limit")]
@@ -60,7 +60,7 @@ pub use error::{AuthError, AuthResult};
 pub use token::{TokenPayload, TokenVerifier};
 pub use validation::{validate_did, validate_handle};
 
-#[cfg(any(feature = "session-sqlite", feature = "session-postgres"))]
+#[cfg(feature = "session-sqlite")]
 pub use session::{Session, SessionManager, SessionStore};
 
 #[cfg(feature = "rate-limit")]
@@ -87,7 +87,7 @@ pub mod prelude {
     pub use crate::token::{TokenPayload, TokenVerifier};
     pub use crate::validation::{validate_did, validate_handle};
 
-    #[cfg(any(feature = "session-sqlite", feature = "session-postgres"))]
+    #[cfg(feature = "session-sqlite")]
     pub use crate::session::{Session, SessionManager, SessionStore};
 
     #[cfg(feature = "rate-limit")]

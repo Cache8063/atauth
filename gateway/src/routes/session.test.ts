@@ -4,6 +4,7 @@ import request from 'supertest';
 import crypto from 'crypto';
 import { createSessionRoutes } from './session.js';
 import { DatabaseService } from '../services/database.js';
+import { createGatewayToken } from '../utils/hmac.js';
 
 const TEST_SECRET = crypto.randomBytes(32).toString('hex');
 
@@ -34,6 +35,10 @@ function registerApp(db: DatabaseService, id = 'test-app') {
     token_ttl_seconds: 3600,
     callback_url: 'https://app.example.com/callback',
   });
+}
+
+function makeGatewayToken(did = 'did:plc:testuser', handle = 'test.bsky.social') {
+  return createGatewayToken({ did, handle, app_id: 'test-app', user_id: -1 }, TEST_SECRET);
 }
 
 function createSession(db: DatabaseService, overrides: Partial<{
@@ -257,9 +262,11 @@ describe('POST /session/update-state', () => {
 
   it('should update session state to connected', async () => {
     const session = createSession(db);
+    const token = makeGatewayToken(session.did);
 
     const res = await request(app)
       .post('/session/update-state')
+      .set('Authorization', `Bearer ${token}`)
       .send({ session_id: session.id, state: 'connected', client_info: 'Firefox 120' });
 
     expect(res.status).toBe(200);
@@ -269,9 +276,11 @@ describe('POST /session/update-state', () => {
 
   it('should accept disconnected state', async () => {
     const session = createSession(db);
+    const token = makeGatewayToken(session.did);
 
     const res = await request(app)
       .post('/session/update-state')
+      .set('Authorization', `Bearer ${token}`)
       .send({ session_id: session.id, state: 'disconnected' });
 
     expect(res.status).toBe(200);
@@ -322,9 +331,11 @@ describe('POST /session/heartbeat', () => {
 
   it('should update session activity', async () => {
     const session = createSession(db);
+    const token = makeGatewayToken(session.did);
 
     const res = await request(app)
       .post('/session/heartbeat')
+      .set('Authorization', `Bearer ${token}`)
       .send({ session_id: session.id });
 
     expect(res.status).toBe(200);
@@ -366,9 +377,11 @@ describe('GET /session/active', () => {
   it('should list active sessions and mark current', async () => {
     const s1 = createSession(db, { id: 'session-1' });
     createSession(db, { id: 'session-2' });
+    const token = makeGatewayToken(s1.did);
 
     const res = await request(app)
       .get('/session/active')
+      .set('Authorization', `Bearer ${token}`)
       .query({ session_id: s1.id, app_id: 'test-app' });
 
     expect(res.status).toBe(200);

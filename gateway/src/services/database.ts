@@ -338,6 +338,56 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
     `);
 
+    // Token revocation blacklist (for JWT access tokens)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS revoked_tokens (
+        jti TEXT PRIMARY KEY,
+        expires_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_revoked_expires ON revoked_tokens(expires_at);
+    `);
+
+    // Passkey challenges (moved from in-memory to persistent)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS passkey_challenges (
+        challenge_key TEXT PRIMARY KEY,
+        challenge TEXT NOT NULL,
+        expires_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_passkey_challenge_expires ON passkey_challenges(expires_at);
+    `);
+
+    // OAuth PDS session/state storage (moved from in-memory to persistent)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS oauth_sessions (
+        key TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        type TEXT NOT NULL,
+        created_at INTEGER DEFAULT (unixepoch()),
+        expires_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_oauth_sessions_expires ON oauth_sessions(expires_at);
+    `);
+
+    // TOTP replay protection: last used time period
+    try {
+      this.db.exec('ALTER TABLE mfa_totp ADD COLUMN last_used_period INTEGER');
+    } catch {
+      // Column already exists
+    }
+
+    // Email verification brute-force protection
+    try {
+      this.db.exec('ALTER TABLE email_verification_codes ADD COLUMN attempts INTEGER DEFAULT 0');
+    } catch {
+      // Column already exists
+    }
+    try {
+      this.db.exec('ALTER TABLE email_verification_codes ADD COLUMN locked_until INTEGER');
+    } catch {
+      // Column already exists
+    }
+
     // Ensure sentinel proxy-auth app exists for forward-auth OAuth flows
     const proxyApp = this.db.prepare('SELECT 1 FROM apps WHERE id = ?').get('proxy-auth');
     if (!proxyApp) {
@@ -1655,5 +1705,106 @@ export class DatabaseService {
 
   setClientAccessCheck(clientId: string, enabled: boolean): void {
     this.db.prepare('UPDATE apps SET require_access_check = ? WHERE id = ?').run(enabled ? 1 : 0, clientId);
+  }
+
+  // --- Token revocation blacklist ---
+
+  addRevokedToken(jti: string, expiresAt: number): void {
+    this.db.prepare('INSERT OR REPLACE INTO revoked_tokens (jti, expires_at) VALUES (?, ?)').run(jti, expiresAt);
+  }
+
+  isTokenRevoked(jti: string): boolean {
+    const row = this.db.prepare('SELECT 1 FROM revoked_tokens WHERE jti = ?').get(jti);
+    return !!row;
+  }
+
+  cleanupExpiredRevokedTokens(): number {
+    const now = Math.floor(Date.now() / 1000);
+    return this.db.prepare('DELETE FROM revoked_tokens WHERE expires_at < ?').run(now).changes;
+  }
+
+  // --- Passkey challenges (persistent) ---
+
+  savePasskeyChallenge(key: string, challenge: string, expiresAt: number): void {
+    this.db.prepare(
+      'INSERT OR REPLACE INTO passkey_challenges (challenge_key, challenge, expires_at) VALUES (?, ?, ?)'
+    ).run(key, challenge, expiresAt);
+  }
+
+  getPasskeyChallenge(key: string): { challenge: string; expires_at: number } | null {
+    const row = this.db.prepare('SELECT challenge, expires_at FROM passkey_challenges WHERE challenge_key = ?').get(key) as { challenge: string; expires_at: number } | undefined;
+    if (!row) return null;
+    if (row.expires_at < Math.floor(Date.now() / 1000)) {
+      this.db.prepare('DELETE FROM passkey_challenges WHERE challenge_key = ?').run(key);
+      return null;
+    }
+    return row;
+  }
+
+  deletePasskeyChallenge(key: string): void {
+    this.db.prepare('DELETE FROM passkey_challenges WHERE challenge_key = ?').run(key);
+  }
+
+  cleanupExpiredPasskeyChallenges(): number {
+    return this.db.prepare('DELETE FROM passkey_challenges WHERE expires_at < ?').run(Date.now()).changes;
+  }
+
+  // --- OAuth PDS session/state storage ---
+
+  saveOAuthSession(key: string, data: string, type: string, expiresAt?: number): void {
+    this.db.prepare(
+      'INSERT OR REPLACE INTO oauth_sessions (key, data, type, expires_at) VALUES (?, ?, ?, ?)'
+    ).run(key, data, type, expiresAt ?? null);
+  }
+
+  getOAuthSession(key: string): { data: string; type: string } | null {
+    const row = this.db.prepare('SELECT data, type FROM oauth_sessions WHERE key = ?').get(key) as { data: string; type: string } | undefined;
+    return row || null;
+  }
+
+  deleteOAuthSession(key: string): void {
+    this.db.prepare('DELETE FROM oauth_sessions WHERE key = ?').run(key);
+  }
+
+  cleanupExpiredOAuthSessions(): number {
+    const now = Math.floor(Date.now() / 1000);
+    return this.db.prepare('DELETE FROM oauth_sessions WHERE expires_at IS NOT NULL AND expires_at < ?').run(now).changes;
+  }
+
+  // --- TOTP replay protection ---
+
+  updateTOTPLastUsedPeriod(did: string, period: number): void {
+    this.db.prepare('UPDATE mfa_totp SET last_used_period = ? WHERE did = ?').run(period, did);
+  }
+
+  getTOTPLastUsedPeriod(did: string): number | null {
+    const row = this.db.prepare('SELECT last_used_period FROM mfa_totp WHERE did = ?').get(did) as { last_used_period: number | null } | undefined;
+    return row?.last_used_period ?? null;
+  }
+
+  // --- Email verification brute-force protection ---
+
+  incrementEmailAttempts(email: string): number {
+    this.db.prepare(
+      'UPDATE email_verification_codes SET attempts = COALESCE(attempts, 0) + 1 WHERE email = ? AND used = 0'
+    ).run(email);
+    const row = this.db.prepare(
+      'SELECT MAX(COALESCE(attempts, 0)) as attempts FROM email_verification_codes WHERE email = ? AND used = 0'
+    ).get(email) as { attempts: number } | undefined;
+    return row?.attempts ?? 0;
+  }
+
+  lockEmailVerification(email: string, until: number): void {
+    this.db.prepare(
+      'UPDATE email_verification_codes SET locked_until = ? WHERE email = ? AND used = 0'
+    ).run(until, email);
+  }
+
+  isEmailVerificationLocked(email: string): boolean {
+    const now = Date.now();
+    const row = this.db.prepare(
+      'SELECT 1 FROM email_verification_codes WHERE email = ? AND used = 0 AND locked_until IS NOT NULL AND locked_until > ?'
+    ).get(email, now);
+    return !!row;
   }
 }
